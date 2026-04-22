@@ -1,0 +1,1 @@
+"""LogiSight FastAPI application package."""
