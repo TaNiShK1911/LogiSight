@@ -1,6 +1,7 @@
 """
 LogiSight Copilot — LangChain SQL Agent with strict company_id filtering.
 Phase 4: AI & Advanced Services
+Migrated to Qwen (qwen-turbo) via DashScope OpenAI-compatible endpoint.
 """
 
 from __future__ import annotations
@@ -42,11 +43,17 @@ def _get_database_url() -> str:
     return url
 
 
-def _get_openai_api_key() -> str:
-    """Get OpenAI API key from environment."""
-    key = os.environ.get("OPENAI_API_KEY", "")
+DASHSCOPE_BASE_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+
+
+def _get_dashscope_api_key() -> str:
+    """Get Qwen/DashScope API key from environment."""
+    key = os.environ.get("DASHSCOPE_API_KEY", "")
     if not key:
-        raise RuntimeError("OPENAI_API_KEY is not set")
+        raise RuntimeError(
+            "DASHSCOPE_API_KEY is not set. "
+            "Get one from https://dashscope-intl.aliyuncs.com"
+        )
     return key
 
 
@@ -59,6 +66,7 @@ def is_write_attempt(question: str) -> bool:
 def get_copilot_agent(company_id: int) -> Any:
     """
     Create a LangChain SQL Agent for the Copilot with strict company_id filtering.
+    Uses Qwen-Turbo via DashScope for low-latency conversational queries.
 
     Args:
         company_id: The client company ID to scope all queries
@@ -67,7 +75,7 @@ def get_copilot_agent(company_id: int) -> Any:
         LangChain SQL Agent configured for freight audit queries
     """
     db_url = _get_database_url()
-    api_key = _get_openai_api_key()
+    api_key = _get_dashscope_api_key()
 
     # Create SQLDatabase connection with specific tables
     db = SQLDatabase.from_uri(
@@ -80,11 +88,13 @@ def get_copilot_agent(company_id: int) -> Any:
         sample_rows_in_table_info=2,
     )
 
-    # Create ChatOpenAI LLM with token limits
+    # Qwen-Turbo via DashScope OpenAI-compatible endpoint
+    # Drop-in replacement for ChatOpenAI — no other LangChain code changes needed
     llm = ChatOpenAI(
-        model="gpt-4o-mini",
+        model="qwen-turbo",           # Fast, cost-effective for conversational queries
         temperature=0,
         api_key=api_key,
+        base_url=DASHSCOPE_BASE_URL,
         max_tokens=800,  # Limit response length to control costs
     )
 
@@ -176,7 +186,7 @@ FALLBACK RESPONSES:
 Remember: NEVER access data from other companies. All queries must filter by company_id = {company_id} or quotes.buyer_id = {company_id}.
 """
 
-    # Create SQL Agent with OpenAI tools
+    # Create SQL Agent — agent_type="openai-tools" works with Qwen via DashScope
     agent = create_sql_agent(
         llm=llm,
         db=db,
@@ -237,8 +247,8 @@ async def run_copilot_query(question: str, company_id: int) -> str:
     except RuntimeError as e:
         # Configuration errors
         error_msg = str(e)
-        if "OPENAI_API_KEY" in error_msg:
-            return "The Copilot service is not configured. Please contact your administrator to set up the OpenAI API key."
+        if "DASHSCOPE_API_KEY" in error_msg:
+            return "The Copilot service is not configured. Please contact your administrator to set up the Qwen/DashScope API key."
         elif "DATABASE_URL" in error_msg:
             return "Database connection error. Please contact your administrator."
         raise

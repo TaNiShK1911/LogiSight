@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import engine
 from app.routers import auth, companies, copilot, invoices, masters, quotes, tracking, users, debug
+from app.routers import hitl
 
 
 def _cors_allow_origins() -> list[str]:
@@ -53,6 +54,7 @@ app.include_router(quotes.router, prefix="/quotes", tags=["quotes"])
 app.include_router(invoices.router, prefix="/invoices", tags=["invoices"])
 app.include_router(tracking.router, prefix="/tracking", tags=["tracking"])
 app.include_router(copilot.router, prefix="/copilot", tags=["copilot"])
+app.include_router(hitl.router, prefix="/hitl", tags=["hitl"])
 app.include_router(debug.router, prefix="/debug", tags=["debug"])
 
 
