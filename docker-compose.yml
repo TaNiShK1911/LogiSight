@@ -1,0 +1,96 @@
+version: "3.9"
+
+# LogiSight — Full Stack Docker Compose
+# Targets Alibaba Cloud ECS deployment (ApsaraDB RDS + ApsaraCache used externally)
+# For local dev: Redis runs in a container; DATABASE_URL points to Supabase or local PG
+
+services:
+  # ── FastAPI Backend ─────────────────────────────────────────────────────────
+  api:
+    build: ./backend
+    container_name: logisight-api
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
+      - ALIBABA_ACCESS_KEY_ID=${ALIBABA_ACCESS_KEY_ID}
+      - ALIBABA_ACCESS_KEY_SECRET=${ALIBABA_ACCESS_KEY_SECRET}
+      - OSS_ENDPOINT=${OSS_ENDPOINT}
+      - OSS_BUCKET_NAME=${OSS_BUCKET_NAME}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - SECRET_KEY=${SECRET_KEY}
+      - SUPABASE_URL=${SUPABASE_URL:-}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173}
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # ── Celery Autopilot Worker ─────────────────────────────────────────────────
+  celery_worker:
+    build: ./backend
+    container_name: logisight-celery-worker
+    command: celery -A app.celery_app worker --loglevel=info -Q autopilot,notifications --concurrency=2
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
+      - ALIBABA_ACCESS_KEY_ID=${ALIBABA_ACCESS_KEY_ID}
+      - ALIBABA_ACCESS_KEY_SECRET=${ALIBABA_ACCESS_KEY_SECRET}
+      - OSS_ENDPOINT=${OSS_ENDPOINT}
+      - OSS_BUCKET_NAME=${OSS_BUCKET_NAME}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - SECRET_KEY=${SECRET_KEY}
+      - VERYFI_CLIENT_ID=${VERYFI_CLIENT_ID:-}
+      - VERYFI_CLIENT_SECRET=${VERYFI_CLIENT_SECRET:-}
+      - VERYFI_USERNAME=${VERYFI_USERNAME:-}
+      - VERYFI_API_KEY=${VERYFI_API_KEY:-}
+      - IMAP_SERVER=${IMAP_SERVER:-}
+      - IMAP_EMAIL=${IMAP_EMAIL:-}
+      - IMAP_PASSWORD=${IMAP_PASSWORD:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - NOTIFY_CLIENT_ADMIN_EMAIL=${NOTIFY_CLIENT_ADMIN_EMAIL:-}
+      - NOTIFY_FORWARDER_EMAIL=${NOTIFY_FORWARDER_EMAIL:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Celery Beat Scheduler ───────────────────────────────────────────────────
+  celery_beat:
+    build: ./backend
+    container_name: logisight-celery-beat
+    command: celery -A app.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - IMAP_SERVER=${IMAP_SERVER:-}
+      - IMAP_EMAIL=${IMAP_EMAIL:-}
+      - IMAP_PASSWORD=${IMAP_PASSWORD:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Redis (local dev only; production uses ApsaraCache) ─────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: logisight-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped

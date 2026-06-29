@@ -13,6 +13,7 @@ import { InvoiceAnalysis } from './pages/InvoiceAnalysis';
 import { ChargeMaster } from './pages/ChargeMaster';
 import { Tracking } from './pages/Tracking';
 import { Copilot } from './pages/Copilot';
+import { PendingReviews } from './pages/PendingReviews';
 
 export const router = createBrowserRouter([
   { path: '/', element: <Landing /> },
@@ -95,6 +96,14 @@ export const router = createBrowserRouter([
         element: (
           <ProtectedRoute allowedRoles={['client']}>
             <Copilot />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'pending-reviews',
+        element: (
+          <ProtectedRoute allowedRoles={['client']}>
+            <PendingReviews />
           </ProtectedRoute>
         ),
       },

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -14,8 +14,10 @@ import {
   Zap,
   Menu,
   X,
+  ShieldAlert,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { getPendingHitlCheckpoints } from '../api/hitl';
 
 interface NavItem {
   to: string;
@@ -35,6 +37,7 @@ const CLIENT_NAV: NavItem[] = [
   { to: '/app/charge-master', label: 'Charge Master', Icon: BookOpen },
   { to: '/app/tracking', label: 'Tracking', Icon: MapPin },
   { to: '/app/copilot', label: 'Copilot', Icon: MessageSquare },
+  { to: '/app/pending-reviews', label: 'Pending Reviews', Icon: ShieldAlert },
 ];
 
 const FORWARDER_NAV: NavItem[] = [
@@ -49,6 +52,23 @@ export function Layout() {
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
+
+  // Fetch pending HITL count every 60s for the notification badge
+  useEffect(() => {
+    if (user?.role !== 'client') return;
+    const fetchCount = async () => {
+      try {
+        const items = await getPendingHitlCheckpoints();
+        setPendingCount(items.length);
+      } catch {
+        // Non-fatal — badge just won't show
+      }
+    };
+    fetchCount();
+    const interval = setInterval(fetchCount, 60_000);
+    return () => clearInterval(interval);
+  }, [user?.role]);
 
   const nav =
     user?.role === 'super_admin'
@@ -112,7 +132,15 @@ export function Layout() {
                 title={collapsed && !mobile ? label : undefined}
               >
                 <Icon className="w-4 h-4 flex-shrink-0" />
-                {(!collapsed || mobile) && <span>{label}</span>}
+                {(!collapsed || mobile) && (
+                  <span className="flex-1">{label}</span>
+                )}
+                {/* Pending Reviews badge */}
+                {label === 'Pending Reviews' && pendingCount > 0 && (!collapsed || mobile) && (
+                  <span className="ml-auto bg-orange-500 text-white text-xs font-bold rounded-full px-1.5 py-0.5 min-w-[1.25rem] text-center">
+                    {pendingCount > 9 ? '9+' : pendingCount}
+                  </span>
+                )}
               </NavLink>
             </li>
           ))}
