@@ -23,6 +23,8 @@ def _cors_allow_origins() -> list[str]:
 
     # Also check CORS_ORIGINS for a comma-separated list
     raw = os.environ.get("CORS_ORIGINS", "").strip()
+    if raw == "*":
+        return ["*"]
     if raw:
         origins.extend([part.strip() for part in raw.split(",") if part.strip()])
 
