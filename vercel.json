@@ -6,7 +6,9 @@
         },
         "backend": {
             "root": "backend",
-            "entrypoint": "api/index.py"
+            "runtime": "python",
+            "entrypoint": "api/index.py",
+            "framework": "fastapi"
         }
     },
     "rewrites": [
