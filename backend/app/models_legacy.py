@@ -1,6 +1,6 @@
 """
 SQLAlchemy 2.0 async ORM models for LogiSight.
-Schema aligns with Supabase Postgres tables and backend_integration.md contracts.
+Core transactional tables — migrated from Supabase Postgres to CockroachDB.
 """
 
 from __future__ import annotations
@@ -49,13 +49,13 @@ class Company(Base):
 
 
 class Profile(Base):
-    """App profile linked to Supabase auth.users."""
+    """App profile linked to Cognito user (by sub UUID)."""
 
     __tablename__ = "profiles"
 
+    # Plain UUID PK — no longer FK to auth.users (Supabase removed)
     id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
-        ForeignKey("auth.users.id", ondelete="CASCADE"),
         primary_key=True,
     )
     company_id: Mapped[int | None] = mapped_column(
@@ -220,6 +220,10 @@ class Invoice(Base):
     invoice_number: Mapped[str] = mapped_column(Text, nullable=False)
     invoice_date: Mapped[date] = mapped_column(Date, nullable=False)
     file_path: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    s3_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    processing_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="completed"
+    )  # pending | processing | completed | failed
     uploaded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

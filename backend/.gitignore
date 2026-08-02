@@ -42,3 +42,8 @@ alembic/versions/*.pyc
 # Test files
 test_*.py
 debug_*.py
+e2e_test*.py
+run_tests.py
+
+# Misc generated files
+ocr_results.txt

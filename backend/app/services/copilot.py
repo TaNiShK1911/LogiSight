@@ -1,53 +1,53 @@
 """
 LogiSight Copilot — LangChain SQL Agent with strict company_id filtering.
-Phase 4: AI & Advanced Services
+Uses AWS Bedrock (Claude) for LLM. Memory events stored in CockroachDB.
 """
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
+import uuid
 from typing import Any
 
-from langchain_community.agent_toolkits import create_sql_agent
 from langchain_community.utilities import SQLDatabase
-from langchain_openai import ChatOpenAI
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import PromptTemplate
+from langchain_core.runnables import RunnablePassthrough
 
+from app.services.bedrock_client import get_chat_model
+
+logger = logging.getLogger(__name__)
 
 # Forbidden keywords for write operations
 FORBIDDEN_KEYWORDS = [
     "insert", "update", "delete", "drop", "truncate",
-    "alter", "create", "grant", "revoke", "replace"
+    "alter", "create", "grant", "revoke", "replace",
 ]
 
 
 def _get_database_url() -> str:
-    """Get sync PostgreSQL URL for LangChain SQLDatabase."""
-    # Try SUPABASE_DB_URL first (connection pooler on port 6543)
-    url = os.environ.get("SUPABASE_DB_URL", "")
-
-    # Fallback to DATABASE_URL if SUPABASE_DB_URL not set
+    """Get sync PostgreSQL URL for LangChain SQLDatabase (psycopg2)."""
+    url = os.environ.get("COCKROACHDB_URL", "")
     if not url:
         url = os.environ.get("DATABASE_URL", "")
-
     if not url:
-        raise RuntimeError("DATABASE_URL or SUPABASE_DB_URL is not set")
+        raise RuntimeError("COCKROACHDB_URL or DATABASE_URL is not set")
 
     # LangChain SQLDatabase requires sync driver (psycopg2)
-    # Convert asyncpg URL to psycopg2 URL
     if "postgresql+asyncpg://" in url:
         url = url.replace("postgresql+asyncpg://", "postgresql://")
+    elif url.startswith("cockroachdb://"):
+        url = url.replace("cockroachdb://", "postgresql://")
     elif url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://")
 
+    # Fix psycopg2 SSL verification on Windows for CockroachDB Serverless
+    if "sslmode=verify-full" in url:
+        url = url.replace("sslmode=verify-full", "sslmode=require")
+
     return url
-
-
-def _get_openai_api_key() -> str:
-    """Get OpenAI API key from environment."""
-    key = os.environ.get("OPENAI_API_KEY", "")
-    if not key:
-        raise RuntimeError("OPENAI_API_KEY is not set")
-    return key
 
 
 def is_write_attempt(question: str) -> bool:
@@ -56,203 +56,234 @@ def is_write_attempt(question: str) -> bool:
     return any(kw in q for kw in FORBIDDEN_KEYWORDS)
 
 
-def get_copilot_agent(company_id: int) -> Any:
-    """
-    Create a LangChain SQL Agent for the Copilot with strict company_id filtering.
+# Cache the database to avoid slow reflection on every request
+_db_cache = None
+_table_info_cache = None
 
-    Args:
-        company_id: The client company ID to scope all queries
 
-    Returns:
-        LangChain SQL Agent configured for freight audit queries
-    """
+def get_database_and_llm():
+    """Return cached SQLDatabase and a fresh Bedrock LLM instance."""
+    global _db_cache
+
     db_url = _get_database_url()
-    api_key = _get_openai_api_key()
 
-    # Create SQLDatabase connection with specific tables
-    db = SQLDatabase.from_uri(
-        db_url,
-        include_tables=[
-            "companies", "countries", "currencies", "airports",
-            "quotes", "quote_charges", "invoices", "invoice_charges",
-            "anomalies", "charges", "charge_aliases", "tracking_events",
-        ],
-        sample_rows_in_table_info=2,
-    )
+    if _db_cache is None:
+        from sqlalchemy import create_engine
+        import types
 
-    # Create ChatOpenAI LLM with token limits
-    llm = ChatOpenAI(
-        model="gpt-4o-mini",
-        temperature=0,
-        api_key=api_key,
-        max_tokens=800,  # Limit response length to control costs
-    )
+        engine = create_engine(db_url)
 
-    # Enhanced system prompt with Chain of Thought reasoning
-    prefix = f"""You are LogiSight Copilot — an expert freight data analyst.
-You help users query their freight database using natural language.
+        # The PGDialect._get_server_version_info() parses pg_catalog.version()
+        # output expecting "PostgreSQL X.Y.Z" but CockroachDB v26+ returns
+        # "CockroachDB CCL v26.2.1 ..." which doesn't match, raising
+        # AssertionError. We monkey-patch the method on the dialect instance
+        # to return a compatible version tuple.
+        def _patched_get_server_version_info(self, connection):
+            return (13, 0, 0)
 
-THINKING PROCESS — always follow these steps before writing SQL:
-1. Understand what the user is asking (identify the main metric, time range, filters)
-2. Identify which tables are needed
-3. Identify how to JOIN them correctly
-4. Write the SQL step by step
-5. Double check: is it SELECT only? is it scoped to company_id = {company_id}? is it limited to 100 rows?
+        engine.dialect._get_server_version_info = types.MethodType(
+            _patched_get_server_version_info, engine.dialect
+        )
 
-CRITICAL SECURITY RULE - YOU MUST ALWAYS FOLLOW THIS:
-- ALWAYS filter ALL queries to show only data for company_id = {company_id} (this is the user's company)
-- NEVER return data from other companies
-- The user is a CLIENT (buyer), so use these filters:
-  * For quotes table: WHERE q.buyer_id = {company_id}
-  * For charges table: WHERE c.company_id = {company_id}
-  * For invoices: join through quotes and use WHERE q.buyer_id = {company_id}
-  * For anomalies: join through invoices → quotes and use WHERE q.buyer_id = {company_id}
-- DO NOT filter by forwarder company_id - that's the carrier, not the user
-- The user wants to see THEIR quotes/invoices, not filter by forwarder
+        _db_cache = SQLDatabase(
+            engine=engine,
+            include_tables=[
+                "companies", "countries", "currencies", "airports",
+                "quotes", "quote_charges", "invoices", "invoice_charges",
+                "anomalies", "charges", "charge_aliases", "tracking_events",
+            ],
+            sample_rows_in_table_info=2,
+        )
 
-STRICT RULES:
-1. ONLY run SELECT queries. NEVER run INSERT, UPDATE, DELETE, DROP, TRUNCATE, ALTER, CREATE, GRANT, REVOKE.
-2. If the user asks to modify or delete data — refuse with: "I can only read data, not modify it."
-3. Always LIMIT to 100 rows unless user asks for more (max 500).
-4. Always use table aliases for readability.
-5. Filter is_active = true for companies unless asked otherwise.
-
-KEY SCHEMA CONTEXT:
-- companies.type = 'client' means buyer, 'forwarder' means carrier
-- quotes.forwarder_id → companies (forwarder), quotes.buyer_id → companies (client)
-- quote_charges  = what forwarder QUOTED (promised amounts)
-- invoice_charges = what forwarder actually BILLED
-- variance = invoice_charges.amount - quote_charges.amount
-- anomalies.variance > 0 means overcharged, < 0 means undercharged
-- anomalies.flag_type: AMOUNT_MISMATCH, UNEXPECTED_CHARGE, MISSING_CHARGE, DUPLICATE_INVOICE
-- mapping_tier: DICTIONARY, HUMAN, UNMAPPED
-- basis values: 'Per KG', 'Per Shipment', 'Per CBM', 'Flat Rate'
-- quote status: SUBMITTED, ACCEPTED, REJECTED
-
-QUOTE vs INVOICE COMPARISON PATTERN:
-SELECT
-    q.tracking_number,
-    co_fwd.name        AS forwarder,
-    qc.mapped_charge_name AS charge,
-    qc.amount          AS quoted_amount,
-    ic.amount          AS invoiced_amount,
-    (ic.amount - qc.amount) AS variance
-FROM quotes q
-JOIN companies co_fwd ON co_fwd.id = q.forwarder_id
-JOIN quote_charges qc ON qc.quote_id = q.id
-JOIN invoices inv     ON inv.quote_id = q.id
-JOIN invoice_charges ic
-    ON ic.invoice_id = inv.id
-    AND ic.mapped_charge_id = qc.mapped_charge_id
-WHERE q.buyer_id = {company_id}
-  AND q.status = 'ACCEPTED'
-LIMIT 100;
-
-RESPONSE GUIDELINES:
-- Provide clear, narrative summaries in paragraph form
-- Avoid using markdown tables - present data in flowing text instead
-- Format currency amounts consistently (e.g., $1,234.56)
-- Use markdown formatting sparingly:
-  * **Bold** for emphasis on key metrics only
-  * Bullet points only when listing 3+ distinct items
-  * Keep responses conversational and easy to read
-- For numerical comparisons, describe them in sentences rather than tables
-- Always include units (currency, weight, volume) with numbers
-- For anomalies, explain what the flag means in plain language
-- If no data found, say so clearly and suggest what data might be available
-- Keep responses concise and well-organized in paragraph form
-- Always scope to company_id = {company_id}
-
-EXAMPLE RESPONSE FORMAT:
-For "Which forwarder had the most anomalies?":
-
-Based on your freight data, DSV Local had the most anomalies this month with 10 discrepancies. The primary issue was amount mismatches, where the invoiced amounts differed from the quoted amounts. This represents a significant variance that may require review with the forwarder.
-
-FALLBACK RESPONSES:
-- If query fails: "I couldn't execute that query. Please try rephrasing your question or ask about quotes, invoices, or anomalies."
-- If no results: "I didn't find any data matching your query. You can ask about your quotes, invoices, charges, or tracking events."
-- If ambiguous: "Could you clarify what you're looking for? For example, are you asking about quotes, invoices, or anomalies?"
-
-Remember: NEVER access data from other companies. All queries must filter by company_id = {company_id} or quotes.buyer_id = {company_id}.
-"""
-
-    # Create SQL Agent with OpenAI tools
-    agent = create_sql_agent(
-        llm=llm,
-        db=db,
-        agent_type="openai-tools",
-        prefix=prefix,
-        verbose=True,  # Enable verbose for debugging
-        max_iterations=10,  # Limit iterations to prevent runaway
-        max_execution_time=60,  # 60 second timeout
-        handle_parsing_errors=True,  # Gracefully handle parsing errors
-    )
-
-    return agent
+    llm = get_chat_model(temperature=0.0)
+    return _db_cache, llm
 
 
-async def run_copilot_query(question: str, company_id: int) -> str:
+def get_table_info_cached(db):
+    global _table_info_cache
+    if _table_info_cache is None:
+        logger.info("Fetching table info for the first time...")
+        _table_info_cache = db.get_table_info()
+    return _table_info_cache
+
+
+async def _record_memory_event(
+    session_id: str | None,
+    tenant_id: int,
+    event_type: str,
+    content: dict,
+) -> None:
+    """Write a memory event row to CockroachDB (fire-and-forget)."""
+    try:
+        from app.database import async_session_factory
+        from app.models.copilot_memory import CopilotMemoryEvent, CopilotSession
+        from sqlalchemy import select
+
+        async with async_session_factory() as session:
+            actual_session_id = uuid.UUID(session_id) if session_id else uuid.uuid4()
+            
+            # Ensure the session exists
+            result = await session.execute(
+                select(CopilotSession).where(CopilotSession.id == actual_session_id)
+            )
+            if not result.scalar_one_or_none():
+                new_sess = CopilotSession(
+                    id=actual_session_id,
+                    tenant_id=tenant_id,
+                    user_id="copilot_user", # placeholder since we don't have user_id here easily
+                )
+                session.add(new_sess)
+                await session.flush()
+
+            event = CopilotMemoryEvent(
+                id=uuid.uuid4(),
+                session_id=actual_session_id,
+                tenant_id=tenant_id,
+                event_type=event_type,
+                content=content,
+            )
+            session.add(event)
+            await session.commit()
+    except Exception as e:
+        logger.warning(f"Failed to record copilot memory event: {e}")
+
+
+async def run_copilot_query(
+    question: str,
+    company_id: int,
+    session_id: str | None = None,
+) -> str:
     """
     Execute a natural language query against the freight database.
-
-    Args:
-        question: Natural language question from the user
-        company_id: Client company ID for data scoping
-
-    Returns:
-        Plain English answer from the SQL Agent
-
-    Raises:
-        ValueError: If question is empty or contains forbidden keywords
-        RuntimeError: If OpenAI API key or database URL is not configured
+    Uses AWS Bedrock (Claude) as the LLM.
     """
-    import asyncio
-
-    # Validate input
     if not question or not question.strip():
         raise ValueError("Question cannot be empty")
 
-    # Check for write attempts
     if is_write_attempt(question):
         return "I can only read data, not modify it. Please ask a question about your quotes, invoices, charges, or tracking data."
 
+    # Record the user query as a memory event
+    await _record_memory_event(
+        session_id=session_id,
+        tenant_id=company_id,
+        event_type="user_message",
+        content={"question": question},
+    )
+
     try:
-        agent = get_copilot_agent(company_id)
+        db, llm = await asyncio.to_thread(get_database_and_llm)
 
-        # Run the synchronous invoke in a thread pool to avoid blocking
-        result = await asyncio.to_thread(agent.invoke, {"input": question})
+        # 1. Generate and Execute SQL with Retry Loop
+        max_retries = 3
+        sql_query = ""
+        sql_result = ""
+        error_context = ""
 
-        # Extract the output from the agent result
-        if isinstance(result, dict):
-            answer = result.get("output", "")
-        else:
-            answer = str(result)
+        for attempt in range(max_retries):
+            sql_template = f"""You are a PostgreSQL expert for a freight platform.
+Given an input question, create a syntactically correct PostgreSQL query to run.
+Unless the user specifies a specific number of examples, limit your query to at most 100 results using the LIMIT clause.
+Never query for all columns from a specific table; only ask for the relevant columns given the question.
+DO NOT make any DML statements (INSERT, UPDATE, DELETE, DROP etc.) to the database.
 
-        # Fallback if no answer
-        if not answer or not answer.strip():
-            return "I couldn't find an answer to that question. Please try rephrasing or ask about your quotes, invoices, charges, or anomalies."
+CRITICAL SECURITY RULE:
+- ALWAYS filter ALL queries to show only data for company_id = {company_id}
+- The user is a CLIENT (buyer), so use these filters:
+  * For quotes table: WHERE buyer_id = {company_id}
+  * For charges table: WHERE company_id = {company_id}
+  * For invoices: join through quotes and use WHERE quotes.buyer_id = {company_id}
+  * For anomalies: join through invoices -> quotes and use WHERE quotes.buyer_id = {company_id}
 
-        return answer.strip()
+SCHEMA HINTS (CRITICAL):
+- The `invoices` table DOES NOT have an `amount` column. You MUST join `invoice_charges` to get invoice amounts.
+- The `quotes` table DOES NOT have an `amount` column. You MUST join `quote_charges` to get quote amounts.
+
+OUTPUT RULE:
+- RETURN ONLY THE SQL QUERY.
+- DO NOT INCLUDE ANY MARKDOWN BACKTICKS OR EXPLANATIONS.
+- If you explain, the system will break.
+
+Only use the following tables:
+{{table_info}}
+{{error_context}}
+Question: {{question}}
+SQLQuery:"""
+
+            sql_prompt = PromptTemplate.from_template(sql_template)
+            sql_chain = (
+                RunnablePassthrough.assign(table_info=lambda _: get_table_info_cached(db))
+                | sql_prompt
+                | llm.bind(stop=["\nSQLResult:"])
+                | StrOutputParser()
+            )
+
+            sql_query = await asyncio.to_thread(
+                sql_chain.invoke,
+                {"question": question, "error_context": error_context},
+            )
+            sql_query = sql_query.replace("```sql", "").replace("```", "").strip()
+            logger.info(f"Generated SQL (Attempt {attempt + 1}): {sql_query}")
+
+            try:
+                sql_result = await asyncio.to_thread(db.run, sql_query)
+                logger.info(f"SQL Result: {sql_result}")
+                break  # Success!
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    logger.error(f"SQL Execution Error (Attempt {attempt + 1}): {e}")
+                    sql_result = (
+                        f"Error executing query after {max_retries} attempts: {e}"
+                    )
+                else:
+                    logger.warning(
+                        f"SQL retry triggered on Attempt {attempt + 1} due to error."
+                    )
+                    error_context = (
+                        f"\nPREVIOUS ERROR: The query you generated failed "
+                        f"with the following error:\n{e}\nPlease fix the syntax "
+                        f"or column names in your new query.\n"
+                    )
+
+        # 2. Generate Answer
+        answer_template = """Based on the SQL query result, answer the user's question in a clear, narrative summary.
+Avoid using markdown tables. Keep it conversational.
+If no data was found or there was an error, say so clearly.
+
+Question: {question}
+SQL Query: {query}
+SQL Result: {result}
+Answer:"""
+        answer_prompt = PromptTemplate.from_template(answer_template)
+        answer_chain = answer_prompt | llm | StrOutputParser()
+
+        final_answer = await asyncio.to_thread(
+            answer_chain.invoke,
+            {"question": question, "query": sql_query, "result": sql_result},
+        )
+
+        answer = final_answer.strip()
+
+        # Record the agent response as a memory event
+        await _record_memory_event(
+            session_id=session_id,
+            tenant_id=company_id,
+            event_type="agent_message",
+            content={
+                "question": question,
+                "sql_query": sql_query,
+                "answer": answer,
+            },
+        )
+
+        return answer
 
     except RuntimeError as e:
-        # Configuration errors
         error_msg = str(e)
-        if "OPENAI_API_KEY" in error_msg:
-            return "The Copilot service is not configured. Please contact your administrator to set up the OpenAI API key."
-        elif "DATABASE_URL" in error_msg:
+        if "DATABASE_URL" in error_msg or "COCKROACHDB_URL" in error_msg:
             return "Database connection error. Please contact your administrator."
         raise
 
     except Exception as e:
-        # General errors - provide helpful fallback
-        error_msg = str(e).lower()
-
-        if "readonly" in error_msg or "permission denied" in error_msg:
-            return "This query is not allowed. I can only read data, not modify it."
-        elif "timeout" in error_msg:
-            return "The query took too long to execute. Please try a simpler question or narrow down your search criteria."
-        elif "syntax error" in error_msg or "invalid" in error_msg:
-            return "I had trouble understanding your question. Could you rephrase it? For example, ask about 'quotes from last month' or 'invoices with anomalies'."
-        else:
-            return "I encountered an error processing your question. Please try rephrasing or ask about your quotes, invoices, charges, or tracking events."
-
+        logger.error(f"Copilot Error: {e}")
+        return "I encountered an error processing your question. Please try rephrasing or ask about your quotes, invoices, charges, or tracking events."

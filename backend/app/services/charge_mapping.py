@@ -148,7 +148,23 @@ async def resolve_raw_charge_name(
             logger.info(f"[MAPPING] ✓ SYSTEM standard match found: charge_id={charge_id}, name='{charge_name}'")
             return charge_id, charge_name, MappingTier.DICTIONARY, False, None
 
-    logger.warning(f"[MAPPING] ✗ No match found for '{raw}' in client or SYSTEM charge master")
+    logger.info(f"[MAPPING] No dictionary match found, trying VECTOR matching...")
+
+    # Step 3: Vector similarity matching using Bedrock Titan embeddings
+    try:
+        vector_result = await _try_vector_match(session, raw, buyer_company_id)
+        if vector_result is not None:
+            v_charge_id, v_charge_name, v_similarity = vector_result
+            logger.info(
+                f"[MAPPING] ✓ VECTOR match found: charge_id={v_charge_id}, "
+                f"name='{v_charge_name}', similarity={v_similarity:.3f}"
+            )
+            low_conf = v_similarity < 0.90  # Mark as low confidence if < 0.90
+            return v_charge_id, v_charge_name, MappingTier.VECTOR, low_conf, v_similarity
+    except Exception as e:
+        logger.warning(f"[MAPPING] Vector matching failed (non-fatal): {e}")
+
+    logger.warning(f"[MAPPING] ✗ No match found for '{raw}' in client or SYSTEM charge master or vectors")
 
     # Debug: Show what aliases exist for this company
     debug_aliases = await session.execute(
@@ -161,3 +177,88 @@ async def resolve_raw_charge_name(
     logger.debug(f"[MAPPING] Sample client aliases: {existing_aliases}")
 
     return None, None, MappingTier.UNMAPPED, True, None
+
+
+async def _try_vector_match(
+    session: AsyncSession,
+    raw_charge_name: str,
+    company_id: int,
+    threshold: float = 0.85,
+) -> tuple[int, str, float] | None:
+    """
+    Try to match a charge name via cosine similarity against stored embeddings.
+    Returns (charge_id, charge_name, similarity) or None.
+    """
+    from app.models.copilot_memory import ChargeEmbedding
+
+    # Check if there are any embeddings for this tenant
+    count_result = await session.execute(
+        select(func.count(ChargeEmbedding.id)).where(
+            ChargeEmbedding.tenant_id == company_id
+        )
+    )
+    embedding_count = count_result.scalar() or 0
+
+    if embedding_count == 0:
+        logger.debug("[MAPPING] No charge embeddings found for this tenant")
+        return None
+
+    # Generate embedding for the raw charge name
+    from app.services.bedrock_client import generate_embedding
+    import asyncio
+    import math
+
+    query_embedding = await asyncio.to_thread(generate_embedding, raw_charge_name)
+
+    # Fetch all embeddings for this tenant (fine for reasonable counts < 10K)
+    from sqlalchemy import text
+
+    rows = await session.execute(
+        text("""
+            SELECT id, charge_name, embedding
+            FROM charge_embeddings
+            WHERE tenant_id = :tenant_id AND embedding IS NOT NULL
+        """),
+        {"tenant_id": company_id},
+    )
+
+    best_match: tuple[str, float] | None = None
+    for row in rows:
+        stored_name = row[1]
+        stored_embedding = row[2]
+
+        if not stored_embedding or len(stored_embedding) != len(query_embedding):
+            continue
+
+        # Cosine similarity
+        dot = sum(a * b for a, b in zip(query_embedding, stored_embedding))
+        norm_a = math.sqrt(sum(a * a for a in query_embedding))
+        norm_b = math.sqrt(sum(b * b for b in stored_embedding))
+
+        if norm_a == 0 or norm_b == 0:
+            continue
+
+        similarity = dot / (norm_a * norm_b)
+
+        if similarity >= threshold:
+            if best_match is None or similarity > best_match[1]:
+                best_match = (stored_name, similarity)
+
+    if best_match is None:
+        return None
+
+    # Look up the charge by name
+    matched_name, matched_similarity = best_match
+    charge_result = await session.execute(
+        select(Charge).where(
+            Charge.company_id == company_id,
+            func.lower(Charge.name) == matched_name.lower(),
+            Charge.is_active == True,
+        ).limit(1)
+    )
+    charge = charge_result.scalar_one_or_none()
+
+    if charge is None:
+        return None
+
+    return int(charge.id), charge.name, matched_similarity

@@ -1,5 +1,5 @@
 """
-Shared FastAPI dependencies for LogiSight: async DB session and Supabase JWT auth.
+Shared FastAPI dependencies for LogiSight: async DB session and Cognito JWT auth.
 """
 
 from __future__ import annotations
@@ -27,8 +27,10 @@ __all__ = [
     "require_company_scope",
 ]
 
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
-SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "")
+# ─── Cognito Configuration ──────────────────────────────────────────────────
+
+COGNITO_REGION = os.environ.get("COGNITO_REGION", os.environ.get("AWS_REGION", "us-east-1"))
+COGNITO_USER_POOL_ID = os.environ.get("COGNITO_USER_POOL_ID", "")
 
 security = HTTPBearer(auto_error=True)
 
@@ -39,7 +41,7 @@ _JWKS_TTL_SECONDS = 300.0
 
 
 class CurrentUser(TypedDict):
-    """Claims extracted from the Supabase access token for request scoping."""
+    """Claims extracted from the Cognito access/ID token for request scoping."""
 
     id: str
     email: str | None
@@ -49,10 +51,19 @@ class CurrentUser(TypedDict):
     is_admin: bool
 
 
+def _jwks_url() -> str:
+    if not COGNITO_USER_POOL_ID:
+        raise RuntimeError("COGNITO_USER_POOL_ID is not set")
+    return (
+        f"https://cognito-idp.{COGNITO_REGION}.amazonaws.com/"
+        f"{COGNITO_USER_POOL_ID}/.well-known/jwks.json"
+    )
+
+
 def _issuer() -> str:
-    if not SUPABASE_URL:
-        raise RuntimeError("SUPABASE_URL is not set")
-    return f"{SUPABASE_URL}/auth/v1"
+    if not COGNITO_USER_POOL_ID:
+        raise RuntimeError("COGNITO_USER_POOL_ID is not set")
+    return f"https://cognito-idp.{COGNITO_REGION}.amazonaws.com/{COGNITO_USER_POOL_ID}"
 
 
 def _coerce_company_id(raw: Any) -> int | None:
@@ -71,30 +82,22 @@ def _coerce_company_id(raw: Any) -> int | None:
 def _coerce_bool(raw: Any) -> bool:
     if isinstance(raw, bool):
         return raw
-    if raw in ("true", "1", 1):
+    if raw in ("true", "1", 1, "True"):
         return True
     return False
 
 
 async def get_jwks() -> dict[str, Any]:
-    """Fetch Supabase JWKS (cached)."""
+    """Fetch Cognito JWKS (cached)."""
     global _jwks_cache, _jwks_cache_expires_at
 
     now = time.monotonic()
     if _jwks_cache is not None and now < _jwks_cache_expires_at:
         return _jwks_cache
 
-    if not SUPABASE_URL:
-        raise RuntimeError("SUPABASE_URL is not set")
-
-    url = f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json"
-    headers: dict[str, str] = {}
-    if SUPABASE_ANON_KEY:
-        headers["apikey"] = SUPABASE_ANON_KEY
-        headers["Authorization"] = f"Bearer {SUPABASE_ANON_KEY}"
-
+    url = _jwks_url()
     async with httpx.AsyncClient(timeout=15.0) as client:
-        response = await client.get(url, headers=headers)
+        response = await client.get(url)
         response.raise_for_status()
         data = response.json()
 
@@ -107,7 +110,8 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> CurrentUser:
     """
-    Verify Supabase RS256 JWT via JWKS and return role, company_id, and related claims.
+    Verify Cognito RS256 JWT via JWKS and return role, company_id, and related claims.
+    Accepts both Cognito access tokens and ID tokens.
     """
     token = credentials.credentials
 
@@ -115,14 +119,12 @@ async def get_current_user(
         jwks = await get_jwks()
         keys = jwks.get("keys") or []
 
-        # Build public keys supporting both RS256 and ES256
-        public_keys = []
+        # Build public keys from JWKS
+        public_keys: list[tuple[str, Any]] = []
         for k in keys:
             kty = k.get("kty")
             if kty == "RSA":
                 public_keys.append(("RS256", jwt.algorithms.RSAAlgorithm.from_jwk(k)))
-            elif kty == "EC":
-                public_keys.append(("ES256", jwt.algorithms.ECAlgorithm.from_jwk(k)))
 
         if not public_keys:
             raise HTTPException(
@@ -140,9 +142,11 @@ async def get_current_user(
                     token,
                     key=key,
                     algorithms=[alg],
-                    audience="authenticated",
                     issuer=iss,
-                    options={"require": ["sub", "exp"]},
+                    options={
+                        "require": ["sub", "exp", "iss"],
+                        "verify_aud": False,  # Cognito access tokens don't have 'aud'
+                    },
                 )
                 break
             except jwt.InvalidTokenError as exc:
@@ -163,32 +167,8 @@ async def get_current_user(
             detail="Could not validate credentials",
         ) from None
 
-    app_meta = payload.get("app_metadata") or {}
-    if not isinstance(app_meta, dict):
-        app_meta = {}
-    user_meta = payload.get("user_metadata") or {}
-    if not isinstance(user_meta, dict):
-        user_meta = {}
-
-    role = app_meta.get("role") or user_meta.get("role")
-    if isinstance(role, str):
-        role = role.strip() or None
-    else:
-        role = None
-
-    raw_company_id = app_meta.get("company_id")
-    if raw_company_id is None:
-        raw_company_id = user_meta.get("company_id")
-    company_id = _coerce_company_id(raw_company_id)
-
-    company_type = app_meta.get("company_type") or user_meta.get("company_type")
-    if isinstance(company_type, str):
-        company_type = company_type.strip() or None
-    else:
-        company_type = None
-
-    is_admin = _coerce_bool(app_meta.get("is_admin", False))
-
+    # Extract claims — Cognito puts custom attributes as 'custom:xxx' in ID tokens
+    # and as top-level claims in access tokens depending on configuration.
     sub = payload.get("sub")
     if not sub or not isinstance(sub, str):
         raise HTTPException(
@@ -196,9 +176,33 @@ async def get_current_user(
             detail="Invalid token subject",
         )
 
+    # Try custom attributes (ID token) first, then top-level (access token)
+    role = payload.get("custom:role") or payload.get("role")
+    if isinstance(role, str):
+        role = role.strip() or None
+    else:
+        role = None
+
+    raw_company_id = payload.get("custom:company_id") or payload.get("company_id")
+    company_id = _coerce_company_id(raw_company_id)
+
+    company_type = payload.get("custom:company_type") or payload.get("company_type")
+    if isinstance(company_type, str):
+        company_type = company_type.strip() or None
+    else:
+        company_type = None
+
+    is_admin = _coerce_bool(
+        payload.get("custom:is_admin") or payload.get("is_admin", False)
+    )
+
+    email = payload.get("email")
+    if not isinstance(email, str):
+        email = None
+
     return CurrentUser(
         id=sub,
-        email=payload.get("email") if isinstance(payload.get("email"), str) else None,
+        email=email,
         role=role,
         company_id=company_id,
         company_type=company_type,

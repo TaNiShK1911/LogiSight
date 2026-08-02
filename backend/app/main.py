@@ -9,18 +9,36 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import engine
-from app.routers import auth, companies, copilot, invoices, masters, quotes, tracking, users, debug
+from app.routers import auth, companies, copilot, dashboard, invoices, masters, quotes, tracking, users, debug
 
 
 def _cors_allow_origins() -> list[str]:
     """Comma-separated `CORS_ORIGINS` env, or local Vite defaults."""
+    # Check for explicit allowed origin (production Vercel domain)
+    allowed = os.environ.get("CORS_ALLOWED_ORIGIN", "").strip()
+    if allowed:
+        origins = [allowed]
+    else:
+        origins = []
+
+    # Also check CORS_ORIGINS for a comma-separated list
     raw = os.environ.get("CORS_ORIGINS", "").strip()
     if raw:
-        return [part.strip() for part in raw.split(",") if part.strip()]
-    return [
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ]
+        origins.extend([part.strip() for part in raw.split(",") if part.strip()])
+
+    # Default local dev origins
+    if not origins:
+        origins = [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ]
+    else:
+        # Always include local dev origins alongside production
+        for local in ("http://localhost:5173", "http://127.0.0.1:5173"):
+            if local not in origins:
+                origins.append(local)
+
+    return origins
 
 
 @asynccontextmanager
@@ -33,7 +51,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="LogiSight API",
     description="Multi-tenant freight audit platform backend",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -53,6 +71,7 @@ app.include_router(quotes.router, prefix="/quotes", tags=["quotes"])
 app.include_router(invoices.router, prefix="/invoices", tags=["invoices"])
 app.include_router(tracking.router, prefix="/tracking", tags=["tracking"])
 app.include_router(copilot.router, prefix="/copilot", tags=["copilot"])
+app.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 app.include_router(debug.router, prefix="/debug", tags=["debug"])
 
 

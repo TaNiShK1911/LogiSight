@@ -49,3 +49,7 @@ build/
 uploads/
 temp/
 tmp/
+
+# AWS credentials - NEVER COMMIT
+*.csv
+Tanishk_Bhanage_accessKeys.csv

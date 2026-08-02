@@ -1,11 +1,11 @@
 """
 Companies and user admin — Super Admin (LogiSight).
+Uses Amazon Cognito for user creation (replacing Supabase).
 """
 
 from __future__ import annotations
 
 import logging
-import os
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -24,36 +24,6 @@ from app.schemas import (
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-
-def _supabase_new_user_id(auth_resp: object) -> str:
-    user = getattr(auth_resp, "user", None)
-    if user is not None and getattr(user, "id", None):
-        return str(user.id)
-    if isinstance(auth_resp, dict):
-        u = auth_resp.get("user")
-        if isinstance(u, dict) and u.get("id"):
-            return str(u["id"])
-    raise HTTPException(status_code=500, detail="Supabase did not return a user id")
-
-
-def _supabase_admin_client():
-    try:
-        from supabase import create_client
-    except ImportError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="supabase package not installed",
-        ) from exc
-
-    url = os.environ.get("SUPABASE_URL", "").rstrip("/")
-    key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
-    if not url or not key:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required",
-        )
-    return create_client(url, key)
 
 
 @router.get("", response_model=list[CompanyRead])
@@ -84,43 +54,41 @@ async def create_company(
     await db.flush()
 
     profile_role = "client" if body.type == "client" else "forwarder"
-    client = _supabase_admin_client()
+
+    # Create user in Cognito
+    from app.services.cognito_client import create_user
+
     try:
-        logger.info(f"Creating Supabase user for {body.admin_email}")
-        auth_resp = client.auth.admin.create_user(
-            {
-                "email": body.admin_email,
-                "password": body.admin_password,
-                "email_confirm": True,
-                "app_metadata": {
-                    "role": profile_role,
-                    "company_id": int(company.id),
-                    "company_type": body.type,
-                    "company_name": company.name,
-                    "is_admin": True,
-                },
-            }
+        logger.info(f"Creating Cognito user for {body.admin_email}")
+        user_sub = create_user(
+            email=body.admin_email,
+            password=body.admin_password,
+            role=profile_role,
+            company_id=int(company.id),
+            company_type=body.type,
+            company_name=company.name,
+            is_admin=True,
+            name=body.admin_name,
         )
-        logger.info(f"✓ Supabase user created successfully for {body.admin_email}")
+        logger.info(f"✓ Cognito user created: {body.admin_email} (sub={user_sub})")
+    except ValueError as exc:
+        logger.error(f"✗ Cognito user creation failed for {body.admin_email}: {exc}")
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Auth user creation failed: {exc!s}",
+        ) from exc
     except Exception as exc:
-        logger.error(f"✗ Supabase user creation failed for {body.admin_email}: {exc}")
+        logger.error(f"✗ Cognito user creation failed for {body.admin_email}: {exc}")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Auth user creation failed: {exc!s}",
         ) from exc
 
-    try:
-        uid = _supabase_new_user_id(auth_resp)
-        logger.info(f"✓ Extracted user ID: {uid}")
-    except HTTPException:
-        logger.error(f"✗ Failed to extract user ID from Supabase response")
-        await db.rollback()
-        raise
-
-    # Create Profile record
+    # Create Profile record in the database
     profile = Profile(
-        id=UUID(uid),
+        id=UUID(user_sub),
         company_id=int(company.id),
         name=body.admin_name,
         role=profile_role,
@@ -129,9 +97,11 @@ async def create_company(
     db.add(profile)
 
     try:
-        logger.info(f"Committing Profile for user {uid} to database...")
+        logger.info(f"Committing Profile for user {user_sub} to database...")
         await db.commit()
-        logger.info(f"✓ Profile created successfully: id={uid}, company_id={company.id}, name={body.admin_name}")
+        logger.info(
+            f"✓ Profile created: id={user_sub}, company_id={company.id}, name={body.admin_name}"
+        )
     except Exception as exc:
         logger.error(f"✗ Failed to commit Profile to database: {exc}")
         await db.rollback()
@@ -172,36 +142,36 @@ async def add_company_user(
         raise HTTPException(status_code=404, detail="Company not found")
 
     profile_role = "client" if company.type == "client" else "forwarder"
-    client = _supabase_admin_client()
+
+    from app.services.cognito_client import create_user
+
     try:
-        logger.info(f"Creating Supabase user for {body.email} in company {company_id}")
-        auth_resp = client.auth.admin.create_user(
-            {
-                "email": body.email,
-                "password": body.password,
-                "email_confirm": True,
-                "app_metadata": {
-                    "role": profile_role,
-                    "company_id": int(company.id),
-                    "company_type": company.type,
-                    "company_name": company.name,
-                    "is_admin": body.is_admin,
-                },
-            }
+        logger.info(f"Creating Cognito user for {body.email} in company {company_id}")
+        user_sub = create_user(
+            email=body.email,
+            password=body.password,
+            role=profile_role,
+            company_id=int(company.id),
+            company_type=company.type,
+            company_name=company.name,
+            is_admin=body.is_admin,
+            name=body.name,
         )
-        logger.info(f"✓ Supabase user created successfully for {body.email}")
+        logger.info(f"✓ Cognito user created: {body.email} (sub={user_sub})")
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Auth user creation failed: {exc!s}",
+        ) from exc
     except Exception as exc:
-        logger.error(f"✗ Supabase user creation failed for {body.email}: {exc}")
+        logger.error(f"✗ Cognito user creation failed for {body.email}: {exc}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Auth user creation failed: {exc!s}",
         ) from exc
 
-    uid = _supabase_new_user_id(auth_resp)
-    logger.info(f"✓ Extracted user ID: {uid}")
-
     profile = Profile(
-        id=UUID(uid),
+        id=UUID(user_sub),
         company_id=int(company.id),
         name=body.name,
         role=profile_role,
@@ -210,9 +180,11 @@ async def add_company_user(
     db.add(profile)
 
     try:
-        logger.info(f"Committing Profile for user {uid} to database...")
+        logger.info(f"Committing Profile for user {user_sub} to database...")
         await db.commit()
-        logger.info(f"✓ Profile created successfully: id={uid}, company_id={company.id}, name={body.name}")
+        logger.info(
+            f"✓ Profile created: id={user_sub}, company_id={company.id}, name={body.name}"
+        )
     except Exception as exc:
         logger.error(f"✗ Failed to commit Profile to database: {exc}")
         await db.rollback()
@@ -221,4 +193,4 @@ async def add_company_user(
             detail=f"Failed to create profile: {exc!s}",
         ) from exc
 
-    return {"id": uid, "company_id": int(company.id)}
+    return {"id": user_sub, "company_id": int(company.id)}

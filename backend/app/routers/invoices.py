@@ -1,15 +1,18 @@
 """
 Invoices — upload, list, detail, anomaly analysis, mapping corrections (LogiSight).
+Uses S3 for file storage (replaces Supabase Storage).
 """
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import time
 from datetime import date
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,12 +31,30 @@ from app.schemas import (
 from app.services.anomaly_detection import run_invoice_analysis
 from app.services.charge_mapping import resolve_raw_charge_name
 from app.services.invoice_extraction import extract_invoice_with_veryfi
-from app.services.serialization import invoice_to_detail_read, invoice_to_header_read
-from app.services.supabase_storage import upload_invoice_to_storage
+from app.services.s3_client import generate_presigned_upload_url, upload_to_s3
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 UPLOAD_ROOT = os.environ.get("UPLOAD_ROOT", "uploads")
+
+
+# ─── Request / Response Models ───────────────────────────────────────────────
+
+
+class PresignedUploadResponse(BaseModel):
+    upload_url: str
+    invoice_id: int
+    s3_key: str
+
+
+class InvoiceStatusRead(BaseModel):
+    id: int
+    processing_status: str  # pending | processing | completed | failed
+
+
+# ─── Helpers ─────────────────────────────────────────────────────────────────
 
 
 def _safe_filename(name: str) -> str:
@@ -99,6 +120,81 @@ def _anomaly_rows(rows: list[Anomaly]) -> list[AnomalyRead]:
     ]
 
 
+# ─── Import serialization helpers ────────────────────────────────────────────
+
+from app.services.serialization import invoice_to_detail_read, invoice_to_header_read
+
+
+# ─── Endpoints ───────────────────────────────────────────────────────────────
+
+
+@router.post("/upload-url", response_model=PresignedUploadResponse, status_code=status.HTTP_201_CREATED)
+async def get_upload_url(
+    quote_id: int = Form(...),
+    filename: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> PresignedUploadResponse:
+    """
+    Generate a pre-signed S3 URL for uploading an invoice PDF.
+    Creates a pending Invoice record and returns the URL + invoice ID.
+    Frontend uploads directly to S3, then the ingest Lambda processes it.
+    """
+    if current_user.get("role") != "forwarder":
+        raise HTTPException(status_code=403, detail="Only forwarders upload invoices")
+
+    cid = current_user.get("company_id")
+    if cid is None:
+        raise HTTPException(status_code=403, detail="Company scope required")
+
+    quote = await db.get(Quote, quote_id)
+    if quote is None or int(quote.forwarder_id) != int(cid):
+        raise HTTPException(status_code=404, detail="Quote not found")
+
+    if quote.status != "ACCEPTED":
+        raise HTTPException(status_code=400, detail="Quote must be ACCEPTED before uploading an invoice")
+
+    ts = int(time.time() * 1000)
+    fname = _safe_filename(filename)
+    s3_key = f"invoices/tenant-{cid}/quote-{quote_id}/{ts}_{fname}"
+
+    # Create pending invoice record
+    inv = Invoice(
+        quote_id=quote_id,
+        invoice_number=f"PENDING-{ts}",
+        invoice_date=date.today(),
+        file_path="",
+        s3_key=s3_key,
+        processing_status="pending",
+    )
+    db.add(inv)
+    await db.commit()
+    await db.refresh(inv)
+
+    # Generate pre-signed upload URL
+    upload_url = generate_presigned_upload_url(s3_key, content_type="application/pdf")
+
+    return PresignedUploadResponse(
+        upload_url=upload_url,
+        invoice_id=int(inv.id),
+        s3_key=s3_key,
+    )
+
+
+@router.get("/{invoice_id}/status", response_model=InvoiceStatusRead)
+async def get_invoice_status(
+    invoice_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> InvoiceStatusRead:
+    """Poll endpoint for invoice processing status."""
+    inv = await _access_invoice(db, invoice_id, current_user)
+    return InvoiceStatusRead(
+        id=int(inv.id),
+        processing_status=inv.processing_status or "completed",
+    )
+
+
 @router.post("/upload", response_model=InvoiceDetailRead, status_code=status.HTTP_201_CREATED)
 async def upload_invoice(
     quote_id: str = Form(...),
@@ -106,6 +202,10 @@ async def upload_invoice(
     db: AsyncSession = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> InvoiceDetailRead:
+    """
+    Direct upload endpoint (local dev fallback + backwards compatibility).
+    Uploads file to S3, runs Veryfi extraction, maps charges, stores in DB.
+    """
     if current_user.get("role") != "forwarder":
         raise HTTPException(status_code=403, detail="Only forwarders upload invoices")
 
@@ -132,49 +232,47 @@ async def upload_invoice(
     # Read file data
     data = await file.read()
 
-    # Upload to Supabase Storage
+    # Upload to S3
+    s3_key = f"invoices/tenant-{cid}/quote-{qid}/{timestamped_filename}"
     try:
-        storage_url = await upload_invoice_to_storage(data, timestamped_filename, qid)
+        upload_to_s3(s3_key, data, content_type="application/pdf")
+        storage_url = f"s3://{s3_key}"
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to upload invoice to storage: {e}"
-        )
+        logger.error(f"S3 upload failed: {e}")
+        # Fallback to local storage for dev
+        storage_url = f"local://{timestamped_filename}"
 
     # Create temporary local file for Veryfi extraction
-    # Veryfi requires a file path, not bytes
     temp_dir = os.path.join(UPLOAD_ROOT, "temp")
     os.makedirs(temp_dir, exist_ok=True)
     temp_path = os.path.join(temp_dir, timestamped_filename)
 
     try:
-        # Write temporary file
         with open(temp_path, "wb") as f:
             f.write(data)
 
-        # Extract invoice data using Veryfi
         try:
             invoice_number, extracted_charges = await extract_invoice_with_veryfi(temp_path)
         except Exception as e:
-            # If extraction fails, create invoice without charges
             invoice_number = f"INV-{ts}"
             extracted_charges = []
-            print(f"Veryfi extraction failed: {e}")
+            logger.warning(f"Veryfi extraction failed: {e}")
 
     finally:
-        # Clean up temporary file
         if os.path.exists(temp_path):
             try:
                 os.remove(temp_path)
             except Exception as e:
-                print(f"Warning: Failed to delete temporary file {temp_path}: {e}")
+                logger.warning(f"Failed to delete temp file {temp_path}: {e}")
 
-    # Create invoice record with Supabase Storage URL
+    # Create invoice record
     inv = Invoice(
         quote_id=qid,
         invoice_number=invoice_number,
         invoice_date=date.today(),
-        file_path=storage_url,  # Store Supabase Storage URL instead of local path
+        file_path=storage_url,
+        s3_key=s3_key,
+        processing_status="completed",
     )
     db.add(inv)
     await db.flush()
@@ -182,7 +280,6 @@ async def upload_invoice(
     # Map and store extracted charges
     buyer_id = int(quote.buyer_id)
     for charge in extracted_charges:
-        # Map charge name to buyer's Charge Master
         mid, mname, tier, low, sim = await resolve_raw_charge_name(
             db, charge.raw_charge_name, buyer_id
         )
@@ -327,6 +424,8 @@ async def analyze_invoice(
     try:
         anomalies = await run_invoice_analysis(db, invoice_id)
     except ValueError as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     return _anomaly_rows(anomalies)

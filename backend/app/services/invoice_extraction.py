@@ -109,13 +109,14 @@ async def extract_invoice_with_veryfi(file_path: str) -> tuple[str, list[Extract
         invoice_number = result.get("document_number", f"INV-{os.path.basename(file_path)}")
 
     vendor_name = result.get("vendor", {}).get("name", "") if isinstance(result.get("vendor"), dict) else ""
+    vendor_name_safe = vendor_name.encode("ascii", "ignore").decode("ascii") if vendor_name else ""
     invoice_date = result.get("date", "")
     due_date = result.get("due_date", "")
     currency_code = result.get("currency_code", "USD")
     tracking_number = result.get("tracking_number", "")
 
     print(f"[VERYFI] Extracted invoice_number: {invoice_number}")
-    print(f"[VERYFI] Vendor: {vendor_name}")
+    print(f"[VERYFI] Vendor: {vendor_name_safe}")
     print(f"[VERYFI] Date: {invoice_date}, Due: {due_date}")
     print(f"[VERYFI] Currency: {currency_code}, Tracking: {tracking_number}")
 
