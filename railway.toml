@@ -1,4 +1,0 @@
-[build]
-builder = "docker"
-dockerfilePath = "backend/Dockerfile"
-watch = ["backend/**"]
