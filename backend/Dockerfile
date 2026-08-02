@@ -1,15 +1,19 @@
-# LogiSight API — AWS Lambda Container Image
-FROM public.ecr.aws/lambda/python:3.11
+# LogiSight API — Standard Dockerfile for Railway/Render
+FROM python:3.11-slim
 
-# Copy requirements and install
-COPY requirements.txt ${LAMBDA_TASK_ROOT}/
-RUN pip install --no-cache-dir -r ${LAMBDA_TASK_ROOT}/requirements.txt
+WORKDIR /app
+
+# Install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY app/ ${LAMBDA_TASK_ROOT}/app/
-COPY alembic/ ${LAMBDA_TASK_ROOT}/alembic/
-COPY alembic.ini ${LAMBDA_TASK_ROOT}/
-COPY lambda_handler.py ${LAMBDA_TASK_ROOT}/
+COPY app/ app/
+COPY alembic/ alembic/
+COPY alembic.ini .
 
-# Set the handler
-CMD ["lambda_handler.handler"]
+# Expose port (Railway provides the PORT environment variable)
+EXPOSE 8000
+
+# Start the FastAPI application
+CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
