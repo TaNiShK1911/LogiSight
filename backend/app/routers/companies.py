@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_db, require_super_admin
+from app.dependencies import CurrentUser, get_current_user, get_db, require_super_admin
 from app.models import Company, Profile
 from app.schemas import (
     CompanyCreateWithAdmin,
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 @router.get("", response_model=list[CompanyRead])
 async def list_companies(
     db: AsyncSession = Depends(get_db),
-    _: CurrentUser = Depends(require_super_admin),
+    _: CurrentUser = Depends(get_current_user),
 ) -> list[Company]:
     result = await db.execute(select(Company).order_by(Company.name))
     return list(result.scalars().all())
