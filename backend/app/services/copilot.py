@@ -196,8 +196,11 @@ CRITICAL SECURITY RULE:
   * For anomalies: join through invoices -> quotes and use WHERE quotes.buyer_id = {company_id}
 
 SCHEMA HINTS (CRITICAL):
-- The `invoices` table DOES NOT have an `amount` column. You MUST join `invoice_charges` to get invoice amounts.
-- The `quotes` table DOES NOT have an `amount` column. You MUST join `quote_charges` to get quote amounts.
+- The `invoices` table DOES NOT have an `amount` column. You MUST join `invoice_charges` (on invoices.id = invoice_charges.invoice_id) and SUM(invoice_charges.amount) to get invoice totals.
+- The `quotes` table DOES NOT have an `amount` column. You MUST join `quote_charges` (on quotes.id = quote_charges.quote_id) and SUM(quote_charges.amount) to get quote totals.
+- SQL TRAP WARNING: NEVER join `quote_charges` and `invoice_charges` in the same main query block! This causes a Cartesian product and multiplies the sums. Use separate subqueries for quote totals and invoice totals.
+- SQL TRAP WARNING: Do NOT use INNER JOIN between quotes and invoices if you want the total of ALL quotes. (That would filter out quotes without invoices).
+- NEVER apply a LIMIT clause when performing aggregate calculations (SUM, COUNT, etc.).
 
 OUTPUT RULE:
 - RETURN ONLY THE SQL QUERY.
