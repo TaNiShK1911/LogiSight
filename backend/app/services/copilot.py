@@ -151,69 +151,22 @@ async def _record_memory_event(
         logger.warning(f"Failed to record copilot memory event: {e}")
 
 
-async def run_copilot_query(
+async def _generate_sql(
+    db,
+    llm,
     question: str,
     company_id: int,
-    session_id: str | None = None,
+    error_context: str = "",
 ) -> str:
     """
-    Execute a natural language query against the freight database.
-    Uses AWS Bedrock (Claude) as the LLM.
+    Generate a single PostgreSQL/CockroachDB-compatible SQL query for the
+    given natural-language question, scoped to company_id.
+
+    Shared by both the MCP path (which needs real SQL to hand to the
+    CockroachDB Cloud Managed MCP Server's execute_query tool — an English
+    question is not valid SQL) and the direct-SQL fallback path.
     """
-    if not question or not question.strip():
-        raise ValueError("Question cannot be empty")
-
-    if is_write_attempt(question):
-        return "I can only read data, not modify it. Please ask a question about your quotes, invoices, charges, or tracking data."
-
-    # Record the user query as a memory event
-    await _record_memory_event(
-        session_id=session_id,
-        tenant_id=company_id,
-        event_type="user_message",
-        content={"question": question},
-    )
-
-    try:
-        # ── MCP path: if configured, try the CockroachDB Cloud MCP Server first ──
-        if is_mcp_configured():
-            try:
-                mcp_tool = create_mcp_tool()
-                if mcp_tool is not None:
-                    logger.info("Routing Copilot query through MCP Server")
-                    mcp_result = await asyncio.to_thread(
-                        mcp_tool.run, question
-                    )
-                    if mcp_result and "error" not in mcp_result.lower():
-                        await _record_memory_event(
-                            session_id=session_id,
-                            tenant_id=company_id,
-                            event_type="agent_message",
-                            content={
-                                "question": question,
-                                "source": "mcp",
-                                "answer": mcp_result,
-                            },
-                        )
-                        return mcp_result
-                    else:
-                        logger.warning(
-                            f"MCP returned error, falling back to direct SQL: {mcp_result}"
-                        )
-            except Exception as e:
-                logger.warning(f"MCP query failed, falling back to direct SQL: {e}")
-
-        # ── Direct SQL path: existing SQLDatabase chain ──
-        db, llm = await asyncio.to_thread(get_database_and_llm)
-
-        # 1. Generate and Execute SQL with Retry Loop
-        max_retries = 3
-        sql_query = ""
-        sql_result = ""
-        error_context = ""
-
-        for attempt in range(max_retries):
-            sql_template = f"""You are a PostgreSQL expert for a freight platform.
+    sql_template = f"""You are a PostgreSQL expert for a freight platform.
 Given an input question, create a syntactically correct PostgreSQL query to run.
 Unless the user specifies a specific number of examples, limit your query to at most 100 results using the LIMIT clause.
 Never query for all columns from a specific table; only ask for the relevant columns given the question.
@@ -246,19 +199,117 @@ Only use the following tables:
 Question: {{question}}
 SQLQuery:"""
 
-            sql_prompt = PromptTemplate.from_template(sql_template)
-            sql_chain = (
-                RunnablePassthrough.assign(table_info=lambda _: get_table_info_cached(db))
-                | sql_prompt
-                | llm.bind(stop=["\nSQLResult:"])
-                | StrOutputParser()
-            )
+    sql_prompt = PromptTemplate.from_template(sql_template)
+    sql_chain = (
+        RunnablePassthrough.assign(table_info=lambda _: get_table_info_cached(db))
+        | sql_prompt
+        | llm.bind(stop=["\nSQLResult:"])
+        | StrOutputParser()
+    )
 
-            sql_query = await asyncio.to_thread(
-                sql_chain.invoke,
-                {"question": question, "error_context": error_context},
+    sql_query = await asyncio.to_thread(
+        sql_chain.invoke,
+        {"question": question, "error_context": error_context},
+    )
+    return sql_query.replace("```sql", "").replace("```", "").strip()
+
+
+async def _generate_answer(llm, question: str, query: str, result: str) -> str:
+    """Turn a SQL query + its result into a natural-language answer."""
+    answer_template = """Based on the SQL query result, answer the user's question in a clear, narrative summary.
+Avoid using markdown tables. Keep it conversational.
+IMPORTANT: Format any ALL_CAPS database enum values or internal codes (e.g., AMOUNT_MISMATCH, UNMAPPED) into clean, human-readable Title Case (e.g., "Amount Mismatch", "Unmapped"). Never expose raw column names or snake_case constants to the user.
+If no data was found or there was an error, say so clearly.
+
+Question: {question}
+SQL Query: {query}
+SQL Result: {result}
+Answer:"""
+    answer_prompt = PromptTemplate.from_template(answer_template)
+    answer_chain = answer_prompt | llm | StrOutputParser()
+
+    final_answer = await asyncio.to_thread(
+        answer_chain.invoke,
+        {"question": question, "query": query, "result": result},
+    )
+    return final_answer.strip()
+
+
+async def run_copilot_query(
+    question: str,
+    company_id: int,
+    session_id: str | None = None,
+) -> str:
+    """
+    Execute a natural language query against the freight database.
+    Uses AWS Bedrock (Claude) as the LLM.
+    """
+    if not question or not question.strip():
+        raise ValueError("Question cannot be empty")
+
+    if is_write_attempt(question):
+        return "I can only read data, not modify it. Please ask a question about your quotes, invoices, charges, or tracking data."
+
+    # Record the user query as a memory event
+    await _record_memory_event(
+        session_id=session_id,
+        tenant_id=company_id,
+        event_type="user_message",
+        content={"question": question},
+    )
+
+    try:
+        # DB + LLM are needed for SQL generation on both the MCP path and
+        # the direct-SQL fallback path, so resolve them up front.
+        db, llm = await asyncio.to_thread(get_database_and_llm)
+
+        # ── MCP path: if configured, generate real SQL first, then execute
+        # it via the CockroachDB Cloud Managed MCP Server. The MCP server's
+        # execute_query tool expects SQL, not an English question, so we
+        # must run the same NL→SQL generation step used by the fallback
+        # path before calling it. ──
+        if is_mcp_configured():
+            try:
+                mcp_tool = create_mcp_tool()
+                if mcp_tool is not None:
+                    mcp_sql = await _generate_sql(db, llm, question, company_id)
+                    logger.info(
+                        f"Routing Copilot query through MCP Server. SQL: {mcp_sql}"
+                    )
+                    mcp_result = await asyncio.to_thread(mcp_tool.run, mcp_sql)
+                    if mcp_result and "error" not in mcp_result.lower():
+                        answer = await _generate_answer(
+                            llm, question, mcp_sql, mcp_result
+                        )
+                        await _record_memory_event(
+                            session_id=session_id,
+                            tenant_id=company_id,
+                            event_type="agent_message",
+                            content={
+                                "question": question,
+                                "source": "mcp",
+                                "sql_query": mcp_sql,
+                                "answer": answer,
+                            },
+                        )
+                        return answer
+                    else:
+                        logger.warning(
+                            f"MCP returned error, falling back to direct SQL: {mcp_result}"
+                        )
+            except Exception as e:
+                logger.warning(f"MCP query failed, falling back to direct SQL: {e}")
+
+        # ── Direct SQL path: existing SQLDatabase chain with retry loop ──
+        max_retries = 3
+        sql_query = ""
+        sql_result = ""
+        error_context = ""
+
+        for attempt in range(max_retries):
+            sql_query = await _generate_sql(
+                db, llm, question, company_id, error_context
             )
-            sql_query = sql_query.replace("```sql", "").replace("```", "").strip()
             logger.info(f"Generated SQL (Attempt {attempt + 1}): {sql_query}")
 
             try:
@@ -281,25 +332,7 @@ SQLQuery:"""
                         f"or column names in your new query.\n"
                     )
 
-        # 2. Generate Answer
-        answer_template = """Based on the SQL query result, answer the user's question in a clear, narrative summary.
-Avoid using markdown tables. Keep it conversational.
-IMPORTANT: Format any ALL_CAPS database enum values or internal codes (e.g., AMOUNT_MISMATCH, UNMAPPED) into clean, human-readable Title Case (e.g., "Amount Mismatch", "Unmapped"). Never expose raw column names or snake_case constants to the user.
-If no data was found or there was an error, say so clearly.
-
-Question: {question}
-SQL Query: {query}
-SQL Result: {result}
-Answer:"""
-        answer_prompt = PromptTemplate.from_template(answer_template)
-        answer_chain = answer_prompt | llm | StrOutputParser()
-
-        final_answer = await asyncio.to_thread(
-            answer_chain.invoke,
-            {"question": question, "query": sql_query, "result": sql_result},
-        )
-
-        answer = final_answer.strip()
+        answer = await _generate_answer(llm, question, sql_query, sql_result)
 
         # Record the agent response as a memory event
         await _record_memory_event(
