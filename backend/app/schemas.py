@@ -215,14 +215,14 @@ class QuoteChargeSubmitItem(BaseModel):
 class QuoteSubmitPayload(BaseModel):
     """Request body for POST /quotes (mapping pipeline)."""
 
-    buyer_id: str
-    origin_airport_id: str
-    destination_airport_id: str
+    buyer_id: int
+    origin_airport_id: int
+    destination_airport_id: int
     tracking_number: str
     gross_weight: float
     volumetric_weight: float
     chargeable_weight: float
-    currency_id: str
+    currency_id: int
     etd: Optional[date] = None
     eta: Optional[date] = None
     goods_description: Optional[str] = None
@@ -246,7 +246,7 @@ class QuoteClientStatusUpdate(BaseModel):
 class MappingCorrectionRequest(BaseModel):
     """PATCH .../charges/{id}/mapping"""
 
-    mapped_charge_id: str
+    mapped_charge_id: int
 
 
 # --- Invoice (InvoiceDetailRead referenced in backend_integration.md §3) ---
@@ -424,13 +424,13 @@ class CurrencyPatch(BaseModel):
 class AirportCreate(BaseModel):
     name: str
     iata_code: str
-    country_id: Optional[str] = None
+    country_id: Optional[int] = None
 
 
 class AirportPatch(BaseModel):
     name: Optional[str] = None
     iata_code: Optional[str] = None
-    country_id: Optional[str] = None
+    country_id: Optional[int] = None
     is_active: Optional[bool] = None
 
 
