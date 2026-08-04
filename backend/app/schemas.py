@@ -61,21 +61,21 @@ class CompanyType(str, Enum):
 
 
 class CompanyRef(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
     id: str
     name: str
 
 
 class AirportRef(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
     iata_code: str
     name: str
 
 
 class CurrencyRef(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
     short_name: str
 
@@ -84,7 +84,7 @@ class CurrencyRef(BaseModel):
 
 
 class CompanyRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
     id: str
     name: str
@@ -140,7 +140,7 @@ class ProfileAdminPatch(BaseModel):
 
 
 class ChargeLineRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
     id: str
     raw_charge_name: str
@@ -158,7 +158,7 @@ class ChargeLineRead(BaseModel):
 class QuoteHeaderRead(BaseModel):
     """Quote header without charge lines (nested under invoices, list views)."""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
     id: str
     quote_ref: str
@@ -180,7 +180,7 @@ class QuoteHeaderRead(BaseModel):
 
 
 class QuoteDetailRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
     id: str
     quote_ref: str
@@ -259,7 +259,7 @@ class InvoiceChargeLineRead(ChargeLineRead):
 
 
 class InvoiceHeaderRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
     id: str
     quote_id: str
@@ -271,7 +271,7 @@ class InvoiceHeaderRead(BaseModel):
 
 
 class InvoiceDetailRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
     id: str
     quote_id: str
@@ -287,7 +287,7 @@ class InvoiceDetailRead(BaseModel):
 
 
 class AnomalyRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
     id: str
     invoice_id: str
@@ -301,7 +301,7 @@ class AnomalyRead(BaseModel):
 
 
 class TrackingEventRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
     id: str
     quote_id: str
@@ -338,7 +338,7 @@ class CopilotQueryResponse(BaseModel):
 
 
 class ChargeAliasRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
     id: str
     charge_id: str
@@ -346,7 +346,7 @@ class ChargeAliasRead(BaseModel):
 
 
 class ChargeRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
     id: str
     company_id: str
@@ -372,7 +372,7 @@ class ChargeAliasCreate(BaseModel):
 
 
 class CountryRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
     id: str
     name: str
@@ -381,7 +381,7 @@ class CountryRead(BaseModel):
 
 
 class CurrencyRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
     id: str
     name: str
@@ -390,7 +390,7 @@ class CurrencyRead(BaseModel):
 
 
 class AirportRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
     id: str
     name: str
@@ -438,7 +438,7 @@ class AirportPatch(BaseModel):
 
 
 class ProfileRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
     id: UUID
     company_id: Optional[str] = None
