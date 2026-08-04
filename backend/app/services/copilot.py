@@ -198,6 +198,7 @@ CRITICAL SECURITY RULE:
 SCHEMA HINTS (CRITICAL):
 - The `invoices` table DOES NOT have an `amount` column. You MUST join `invoice_charges` (on invoices.id = invoice_charges.invoice_id) and SUM(invoice_charges.amount) to get invoice totals.
 - The `quotes` table DOES NOT have an `amount` column. You MUST join `quote_charges` (on quotes.id = quote_charges.quote_id) and SUM(quote_charges.amount) to get quote totals.
+- When asked about "charge types" or "specific charges", join `invoice_charges` to use `mapped_charge_name`. Do NOT use `anomalies.flag_type` (which is an anomaly category like AMOUNT_MISMATCH, not a charge).
 - SQL TRAP WARNING: NEVER join `quote_charges` and `invoice_charges` in the same main query block! This causes a Cartesian product and multiplies the sums. Use separate subqueries for quote totals and invoice totals.
 - SQL TRAP WARNING: Do NOT use INNER JOIN between quotes and invoices if you want the total of ALL quotes. (That would filter out quotes without invoices).
 - NEVER apply a LIMIT clause when performing aggregate calculations (SUM, COUNT, etc.).
@@ -251,6 +252,7 @@ SQLQuery:"""
         # 2. Generate Answer
         answer_template = """Based on the SQL query result, answer the user's question in a clear, narrative summary.
 Avoid using markdown tables. Keep it conversational.
+IMPORTANT: Format any ALL_CAPS database enum values or internal codes (e.g., AMOUNT_MISMATCH, UNMAPPED) into clean, human-readable Title Case (e.g., "Amount Mismatch", "Unmapped"). Never expose raw column names or snake_case constants to the user.
 If no data was found or there was an error, say so clearly.
 
 Question: {question}
