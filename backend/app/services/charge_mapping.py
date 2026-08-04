@@ -186,7 +186,14 @@ async def _try_vector_match(
     threshold: float = 0.85,
 ) -> tuple[int, str, float] | None:
     """
-    Try to match a charge name via cosine similarity against stored embeddings.
+    Try to match a charge name via cosine similarity against stored embeddings
+    using CockroachDB's native distributed vector index.
+
+    Uses the <=> operator (cosine distance) which returns values in [0, 2]:
+      0 = identical vectors, 2 = opposite vectors.
+    We convert to similarity = 1 - distance so existing threshold logic
+    (>= 0.85 for match, < 0.90 for low confidence) works unchanged.
+
     Returns (charge_id, charge_name, similarity) or None.
     """
     from app.models.copilot_memory import ChargeEmbedding
@@ -203,52 +210,48 @@ async def _try_vector_match(
         logger.debug("[MAPPING] No charge embeddings found for this tenant")
         return None
 
-    # Generate embedding for the raw charge name
+    # Generate embedding for the raw charge name via Bedrock Titan
     from app.services.bedrock_client import generate_embedding
     import asyncio
-    import math
 
     query_embedding = await asyncio.to_thread(generate_embedding, raw_charge_name)
 
-    # Fetch all embeddings for this tenant (fine for reasonable counts < 10K)
+    # Build the vector literal string for CockroachDB: '[0.1,0.2,...]'
+    vec_literal = "[" + ",".join(str(f) for f in query_embedding) + "]"
+
+    # SQL-side vector search using CockroachDB's native <=> cosine distance
+    # operator.  The distributed vector index (ix_charge_embeddings_vector)
+    # accelerates this query.  We compute similarity = 1 - cosine_distance
+    # so that higher = more similar, consistent with the threshold logic.
     from sqlalchemy import text
 
-    rows = await session.execute(
+    result = await session.execute(
         text("""
-            SELECT id, charge_name, embedding
+            SELECT charge_name,
+                   1.0 - (embedding_v <=> CAST(:query_vec AS VECTOR)) AS similarity
             FROM charge_embeddings
-            WHERE tenant_id = :tenant_id AND embedding IS NOT NULL
+            WHERE tenant_id = :tenant_id
+              AND embedding_v IS NOT NULL
+            ORDER BY embedding_v <=> CAST(:query_vec AS VECTOR)
+            LIMIT 1
         """),
-        {"tenant_id": company_id},
+        {"tenant_id": company_id, "query_vec": vec_literal},
     )
 
-    best_match: tuple[str, float] | None = None
-    for row in rows:
-        stored_name = row[1]
-        stored_embedding = row[2]
-
-        if not stored_embedding or len(stored_embedding) != len(query_embedding):
-            continue
-
-        # Cosine similarity
-        dot = sum(a * b for a, b in zip(query_embedding, stored_embedding))
-        norm_a = math.sqrt(sum(a * a for a in query_embedding))
-        norm_b = math.sqrt(sum(b * b for b in stored_embedding))
-
-        if norm_a == 0 or norm_b == 0:
-            continue
-
-        similarity = dot / (norm_a * norm_b)
-
-        if similarity >= threshold:
-            if best_match is None or similarity > best_match[1]:
-                best_match = (stored_name, similarity)
-
-    if best_match is None:
+    row = result.fetchone()
+    if row is None:
         return None
 
-    # Look up the charge by name
-    matched_name, matched_similarity = best_match
+    matched_name, similarity = row[0], float(row[1])
+
+    if similarity < threshold:
+        logger.debug(
+            f"[MAPPING] Best vector match '{matched_name}' has similarity "
+            f"{similarity:.3f} < threshold {threshold} — skipping"
+        )
+        return None
+
+    # Look up the actual Charge record by name
     charge_result = await session.execute(
         select(Charge).where(
             Charge.company_id == company_id,
@@ -259,6 +262,10 @@ async def _try_vector_match(
     charge = charge_result.scalar_one_or_none()
 
     if charge is None:
+        # Embedding exists but the charge was deleted or deactivated
+        logger.debug(
+            f"[MAPPING] Vector matched '{matched_name}' but no active Charge found"
+        )
         return None
 
-    return int(charge.id), charge.name, matched_similarity
+    return int(charge.id), charge.name, similarity

@@ -1,6 +1,8 @@
 """
 LogiSight Copilot — LangChain SQL Agent with strict company_id filtering.
-Uses AWS Bedrock (Claude) for LLM. Memory events stored in CockroachDB.
+Uses Groq (LLaMA 3.3) as the primary LLM, with Bedrock (Claude) as fallback.
+Memory events stored in CockroachDB.  Optionally queries via CockroachDB
+Cloud Managed MCP Server when configured.
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 
 from app.services.bedrock_client import get_chat_model
+from app.services.mcp_client import create_mcp_tool, is_mcp_configured
 
 logger = logging.getLogger(__name__)
 
@@ -172,6 +175,35 @@ async def run_copilot_query(
     )
 
     try:
+        # ── MCP path: if configured, try the CockroachDB Cloud MCP Server first ──
+        if is_mcp_configured():
+            try:
+                mcp_tool = create_mcp_tool()
+                if mcp_tool is not None:
+                    logger.info("Routing Copilot query through MCP Server")
+                    mcp_result = await asyncio.to_thread(
+                        mcp_tool.run, question
+                    )
+                    if mcp_result and "error" not in mcp_result.lower():
+                        await _record_memory_event(
+                            session_id=session_id,
+                            tenant_id=company_id,
+                            event_type="agent_message",
+                            content={
+                                "question": question,
+                                "source": "mcp",
+                                "answer": mcp_result,
+                            },
+                        )
+                        return mcp_result
+                    else:
+                        logger.warning(
+                            f"MCP returned error, falling back to direct SQL: {mcp_result}"
+                        )
+            except Exception as e:
+                logger.warning(f"MCP query failed, falling back to direct SQL: {e}")
+
+        # ── Direct SQL path: existing SQLDatabase chain ──
         db, llm = await asyncio.to_thread(get_database_and_llm)
 
         # 1. Generate and Execute SQL with Retry Loop
