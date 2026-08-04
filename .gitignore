@@ -53,3 +53,9 @@ tmp/
 # AWS credentials - NEVER COMMIT
 *.csv
 Tanishk_Bhanage_accessKeys.csv
+
+# Secrets and tests
+env_vars.json
+test_aws_api.py
+test.py
+scratch/

@@ -15,6 +15,10 @@ import os
 import subprocess
 import sys
 import time
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 REGION = "us-east-1"
@@ -45,7 +49,7 @@ LAMBDA_ENV_VARS = {
 
 def run(cmd, check=True, capture=False):
     """Run a shell command."""
-    print(f"  → {cmd}")
+    print(f"  -> {cmd}")
     result = subprocess.run(cmd, shell=True, check=check,
                             capture_output=capture, text=True)
     if capture:
@@ -61,31 +65,33 @@ def step(msg):
 
 def main():
     # ── Step 1: Create ECR repository (if not exists) ──────────────────────
-    step("1/6 — Creating ECR repository")
+    step("1/6 - Creating ECR repository")
     try:
         run(f'aws ecr create-repository --repository-name {ECR_REPO} '
             f'--region {REGION} --image-scanning-configuration scanOnPush=true',
             capture=True)
-        print("  ✓ ECR repository created")
+        print("  OK ECR repository created")
     except subprocess.CalledProcessError:
-        print("  ✓ ECR repository already exists")
+        print("  OK ECR repository already exists")
 
     # ── Step 2: Login to ECR ───────────────────────────────────────────────
-    step("2/6 — Logging in to ECR")
+    step("2/6 - Logging in to ECR")
     run(f'aws ecr get-login-password --region {REGION} | '
         f'docker login --username AWS --password-stdin {ACCOUNT_ID}.dkr.ecr.{REGION}.amazonaws.com')
 
     # ── Step 3: Build & push Docker image ──────────────────────────────────
-    step("3/6 — Building Docker image")
+    step("3/6 - Building Docker image")
     run(f'docker build -t {ECR_REPO}:{IMAGE_TAG} .')
     run(f'docker tag {ECR_REPO}:{IMAGE_TAG} {IMAGE_URI}')
 
-    step("4/6 — Pushing image to ECR")
+    step("4/6 - Pushing image to ECR")
     run(f'docker push {IMAGE_URI}')
 
     # ── Step 4: Create/Update Lambda function ──────────────────────────────
-    step("5/6 — Deploying Lambda function")
+    step("5/6 - Deploying Lambda function")
     env_json = json.dumps({"Variables": LAMBDA_ENV_VARS})
+    with open("env_vars.json", "w") as f:
+        f.write(env_json)
 
     # Check if function exists
     try:
@@ -103,7 +109,7 @@ def main():
             f"--function-name {FUNCTION_NAME} "
             f"--memory-size {MEMORY_SIZE} "
             f"--timeout {TIMEOUT} "
-            f"--environment '{env_json}' "
+            f"--environment file://env_vars.json "
             f"--region {REGION}",
             capture=True)
     except subprocess.CalledProcessError:
@@ -120,19 +126,19 @@ def main():
             f"--role {role_arn} "
             f"--memory-size {MEMORY_SIZE} "
             f"--timeout {TIMEOUT} "
-            f"--environment '{env_json}' "
+            f"--environment file://env_vars.json "
             f"--region {REGION}",
             capture=True)
 
-    print("  ✓ Lambda function deployed")
+    print("  OK Lambda function deployed")
 
     # ── Step 5: Create API Gateway ─────────────────────────────────────────
-    step("6/6 — Setting up API Gateway")
+    step("6/6 - Setting up API Gateway")
     api_url = setup_api_gateway()
 
     # ── Done ───────────────────────────────────────────────────────────────
     print(f"\n{'='*60}")
-    print(f"  ✅ DEPLOYMENT COMPLETE!")
+    print(f"  OK DEPLOYMENT COMPLETE!")
     print(f"{'='*60}")
     print(f"  Backend URL: {api_url}")
     print(f"\n  Next steps:")
@@ -154,9 +160,11 @@ def create_lambda_role():
     })
 
     try:
+        with open("trust_policy.json", "w") as f:
+            f.write(trust_policy)
         result = run(
             f"aws iam create-role --role-name {role_name} "
-            f"--assume-role-policy-document '{trust_policy}' "
+            f"--assume-role-policy-document file://trust_policy.json "
             f"--region {REGION}",
             capture=True
         )
@@ -192,12 +200,12 @@ def setup_api_gateway():
 
     if existing:
         api_id = existing[0]["ApiId"]
-        print(f"  ✓ API Gateway already exists: {api_id}")
+        print(f"  OK API Gateway already exists: {api_id}")
     else:
         # Create HTTP API with Lambda integration
         lambda_arn = run(
             f"aws lambda get-function --function-name {FUNCTION_NAME} "
-            f"--region {REGION} --query 'Configuration.FunctionArn' --output text",
+            f"--region {REGION} --query Configuration.FunctionArn --output text",
             capture=True
         )
 
@@ -221,7 +229,7 @@ def setup_api_gateway():
             f'--region {REGION}',
             capture=True)
 
-        print(f"  ✓ API Gateway created: {api_id}")
+        print(f"  OK API Gateway created: {api_id}")
 
     api_url = f"https://{api_id}.execute-api.{REGION}.amazonaws.com"
     return api_url

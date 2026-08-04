@@ -243,7 +243,7 @@ async def upload_invoice(
         storage_url = f"local://{timestamped_filename}"
 
     # Create temporary local file for Veryfi extraction
-    temp_dir = os.path.join(UPLOAD_ROOT, "temp")
+    temp_dir = "/tmp/logisight_uploads"
     os.makedirs(temp_dir, exist_ok=True)
     temp_path = os.path.join(temp_dir, timestamped_filename)
 
