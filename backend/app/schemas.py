@@ -312,6 +312,8 @@ class TrackingEventRead(BaseModel):
 
 
 class TrackingShipmentRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
+
     quote_id: str
     quote_ref: str
     tracking_number: str
