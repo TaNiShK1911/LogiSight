@@ -33,10 +33,13 @@ def _cors_allow_origins() -> list[str]:
         origins = [
             "http://localhost:5173",
             "http://127.0.0.1:5173",
+            "http://localhost:5174",
+            "http://127.0.0.1:5174",
+            "https://logisight.vercel.app",
         ]
     else:
         # Always include local dev origins alongside production
-        for local in ("http://localhost:5173", "http://127.0.0.1:5173"):
+        for local in ("http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174", "https://logisight.vercel.app"):
             if local not in origins:
                 origins.append(local)
 
