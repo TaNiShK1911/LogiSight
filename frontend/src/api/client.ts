@@ -123,7 +123,7 @@ export async function createCompany(
   return res.data;
 }
 
-export async function updateCompanyStatus(id: number, is_active: boolean): Promise<Company> {
+export async function updateCompanyStatus(id: string, is_active: boolean): Promise<Company> {
   const res = await apiClient.patch(`/companies/${id}/status`, { is_active });
   return res.data;
 }
@@ -152,17 +152,17 @@ export async function createCharge(payload: { name: string; short_name: string }
   return res.data;
 }
 
-export async function updateCharge(id: number, payload: Partial<Charge>): Promise<Charge> {
+export async function updateCharge(id: string, payload: Partial<Charge>): Promise<Charge> {
   const res = await apiClient.patch(`/masters/charges/${id}`, payload);
   return res.data;
 }
 
-export async function addAlias(chargeId: number, alias: string): Promise<ChargeAlias> {
+export async function addAlias(chargeId: string, alias: string): Promise<ChargeAlias> {
   const res = await apiClient.post(`/masters/charges/${chargeId}/aliases`, { alias });
   return res.data;
 }
 
-export async function deleteAlias(chargeId: number, aliasId: number): Promise<void> {
+export async function deleteAlias(chargeId: string, aliasId: string): Promise<void> {
   await apiClient.delete(`/masters/charges/${chargeId}/aliases/${aliasId}`);
 }
 
@@ -173,7 +173,7 @@ export async function getQuotes(): Promise<QuoteHeader[]> {
   return res.data;
 }
 
-export async function getQuote(id: number): Promise<QuoteDetail> {
+export async function getQuote(id: string): Promise<QuoteDetail> {
   const res = await apiClient.get(`/quotes/${id}`);
   return res.data;
 }
@@ -184,7 +184,7 @@ export async function submitQuote(payload: QuoteSubmitPayload): Promise<QuoteDet
 }
 
 export async function updateQuoteStatus(
-  id: number,
+  id: string,
   status: 'ACCEPTED' | 'REJECTED',
   rejection_note?: string,
 ): Promise<QuoteDetail> {
@@ -192,24 +192,24 @@ export async function updateQuoteStatus(
   return res.data;
 }
 
-export async function correctQuoteChargeMapping(chargeId: number, mapped_charge_id: number): Promise<void> {
+export async function correctQuoteChargeMapping(chargeId: string, mapped_charge_id: string): Promise<void> {
   await apiClient.patch(`/quotes/charges/${chargeId}/mapping`, { mapped_charge_id });
 }
 
 // ─── INVOICES ────────────────────────────────────────────────────────────────
 
-export async function getInvoices(quote_id?: number): Promise<InvoiceHeader[]> {
+export async function getInvoices(quote_id?: string): Promise<InvoiceHeader[]> {
   const params = quote_id ? { quote_id } : {};
   const res = await apiClient.get('/invoices', { params });
   return res.data;
 }
 
-export async function getInvoice(id: number): Promise<InvoiceDetail> {
+export async function getInvoice(id: string): Promise<InvoiceDetail> {
   const res = await apiClient.get(`/invoices/${id}`);
   return res.data;
 }
 
-export async function uploadInvoice(quote_id: number, file: File): Promise<InvoiceDetail> {
+export async function uploadInvoice(quote_id: string, file: File): Promise<InvoiceDetail> {
   const formData = new FormData();
   formData.append('quote_id', quote_id.toString());
   formData.append('file', file);
@@ -218,17 +218,17 @@ export async function uploadInvoice(quote_id: number, file: File): Promise<Invoi
   return res.data;
 }
 
-export async function analyzeInvoice(id: number): Promise<AnomalyRead[]> {
+export async function analyzeInvoice(id: string): Promise<AnomalyRead[]> {
   const res = await apiClient.post(`/invoices/${id}/analyze`);
   return res.data;
 }
 
-export async function getAnomalies(id: number): Promise<AnomalyRead[]> {
+export async function getAnomalies(id: string): Promise<AnomalyRead[]> {
   const res = await apiClient.get(`/invoices/${id}/anomalies`);
   return res.data;
 }
 
-export async function correctInvoiceChargeMapping(chargeId: number, mapped_charge_id: number): Promise<void> {
+export async function correctInvoiceChargeMapping(chargeId: string, mapped_charge_id: string): Promise<void> {
   await apiClient.patch(`/invoices/charges/${chargeId}/mapping`, { mapped_charge_id });
 }
 
@@ -239,7 +239,7 @@ export async function getTracking(): Promise<TrackingShipment[]> {
   return res.data;
 }
 
-export async function getTrackingEvents(quoteId: number): Promise<TrackingEvent[]> {
+export async function getTrackingEvents(quoteId: string): Promise<TrackingEvent[]> {
   const res = await apiClient.get(`/tracking/${quoteId}/events`);
   return res.data;
 }

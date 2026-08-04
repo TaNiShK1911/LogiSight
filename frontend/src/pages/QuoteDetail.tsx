@@ -33,8 +33,8 @@ export function QuoteDetail() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   const { data: quote, isLoading } = useQuery({
-    queryKey: ['quotes', Number(id)],
-    queryFn: () => getQuote(Number(id)),
+    queryKey: ['quotes', id!],
+    queryFn: () => getQuote(id!),
     enabled: !!id,
   });
 
@@ -46,9 +46,9 @@ export function QuoteDetail() {
 
   const statusMutation = useMutation({
     mutationFn: ({ status, note }: { status: 'ACCEPTED' | 'REJECTED'; note?: string }) =>
-      updateQuoteStatus(Number(id), status, note),
+      updateQuoteStatus(id!, status, note),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['quotes', Number(id)] });
+      qc.invalidateQueries({ queryKey: ['quotes', id!] });
       qc.invalidateQueries({ queryKey: ['quotes'] });
       setShowRejectModal(false);
       setRejectNote('');
@@ -58,9 +58,9 @@ export function QuoteDetail() {
   });
 
   const correctMutation = useMutation({
-    mutationFn: ({ chargeId, mappedChargeId }: { chargeId: number; mappedChargeId: number }) =>
+    mutationFn: ({ chargeId, mappedChargeId }: { chargeId: string; mappedChargeId: string }) =>
       correctQuoteChargeMapping(chargeId, mappedChargeId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['quotes', Number(id)] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['quotes', id!] }),
   });
 
   if (isLoading) {

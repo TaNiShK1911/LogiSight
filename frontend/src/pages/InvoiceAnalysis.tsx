@@ -19,8 +19,8 @@ export function InvoiceAnalysis() {
   const [analysed, setAnalysed] = useState(false);
 
   const { data: invoice, isLoading: invLoading } = useQuery({
-    queryKey: ['invoices', Number(id)],
-    queryFn: () => getInvoice(Number(id)),
+    queryKey: ['invoices', id!],
+    queryFn: () => getInvoice(id!),
     enabled: !!id,
   });
 
@@ -37,13 +37,13 @@ export function InvoiceAnalysis() {
   });
 
   const { data: anomalies = [], refetch: refetchAnomalies } = useQuery({
-    queryKey: ['anomalies', Number(id)],
-    queryFn: () => getAnomalies(Number(id)),
+    queryKey: ['anomalies', id!],
+    queryFn: () => getAnomalies(id!),
     enabled: analysed,
   });
 
   const analyseMutation = useMutation({
-    mutationFn: () => analyzeInvoice(Number(id)),
+    mutationFn: () => analyzeInvoice(id!),
     onSuccess: async () => {
       setAnalysed(true);
       await refetchAnomalies();
@@ -51,9 +51,9 @@ export function InvoiceAnalysis() {
   });
 
   const correctMutation = useMutation({
-    mutationFn: ({ chargeId, mappedChargeId }: { chargeId: number; mappedChargeId: number }) =>
+    mutationFn: ({ chargeId, mappedChargeId }: { chargeId: string; mappedChargeId: string }) =>
       correctInvoiceChargeMapping(chargeId, mappedChargeId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['invoices', Number(id)] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['invoices', id!] }),
   });
 
   if (invLoading) {

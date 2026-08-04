@@ -11,9 +11,9 @@ function AliasBadge({
   onDelete,
 }: {
   alias: string;
-  chargeId: number;
+  chargeId: string;
   aliasId: number;
-  onDelete: (chargeId: number, aliasId: number) => void;
+  onDelete: (chargeId: string, aliasId: string) => void;
 }) {
   return (
     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-slate-700 bg-slate-800 text-xs text-slate-400">
@@ -30,8 +30,8 @@ function AliasBadge({
 
 function ChargeRow({ charge, onAddAlias, onDeleteAlias }: {
   charge: Charge;
-  onAddAlias: (chargeId: number, alias: string) => void;
-  onDeleteAlias: (chargeId: number, aliasId: number) => void;
+  onAddAlias: (chargeId: string, alias: string) => void;
+  onDeleteAlias: (chargeId: string, aliasId: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [newAlias, setNewAlias] = useState('');
@@ -139,13 +139,13 @@ export function ChargeMaster() {
   });
 
   const aliasMutation = useMutation({
-    mutationFn: ({ chargeId, alias }: { chargeId: number; alias: string }) =>
+    mutationFn: ({ chargeId, alias }: { chargeId: string; alias: string }) =>
       addAlias(chargeId, alias),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['charges'] }),
   });
 
   const deleteAliasMutation = useMutation({
-    mutationFn: ({ chargeId, aliasId }: { chargeId: number; aliasId: number }) =>
+    mutationFn: ({ chargeId, aliasId }: { chargeId: string; aliasId: string }) =>
       deleteAlias(chargeId, aliasId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['charges'] }),
   });

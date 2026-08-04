@@ -32,7 +32,7 @@ export function Invoices() {
   const acceptedQuotes = quotes.filter((q) => q.status === 'ACCEPTED');
 
   const uploadMutation = useMutation({
-    mutationFn: () => uploadInvoice(Number(selectedQuoteId), selectedFile!),
+    mutationFn: () => uploadInvoice(selectedQuoteId!, selectedFile!),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['invoices'] });
       setShowUpload(false);

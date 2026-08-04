@@ -9,7 +9,7 @@ interface Props {
   isClient: boolean;
   showConfidence?: boolean;
   chargeMaster?: Charge[];
-  onCorrectMapping?: (chargeId: number, mappedChargeId: number) => void;
+  onCorrectMapping?: (chargeId: string, mappedChargeId: string) => void;
   anomalies?: AnomalyRead[];
   quoteCharges?: ChargeLineRow[];
   hideMapping?: boolean; // If true, only show raw charge names (for invoices)
@@ -24,9 +24,9 @@ function MappingDropdown({
   chargeMaster,
   onSelect,
 }: {
-  chargeId: number;
+  chargeId: string;
   chargeMaster: Charge[];
-  onSelect: (chargeId: number, mappedChargeId: number) => void;
+  onSelect: (chargeId: string, mappedChargeId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   return (

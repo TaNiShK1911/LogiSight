@@ -63,7 +63,7 @@ class CompanyType(str, Enum):
 class CompanyRef(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    id: str
     name: str
 
 
@@ -86,7 +86,7 @@ class CurrencyRef(BaseModel):
 class CompanyRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    id: str
     name: str
     short_name: str
     type: Literal["client", "forwarder"]
@@ -142,9 +142,9 @@ class ProfileAdminPatch(BaseModel):
 class ChargeLineRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    id: str
     raw_charge_name: str
-    mapped_charge_id: Optional[int] = None
+    mapped_charge_id: Optional[str] = None
     mapped_charge_name: Optional[str] = None
     similarity_score: Optional[float] = None
     mapping_tier: MappingTier
@@ -160,7 +160,7 @@ class QuoteHeaderRead(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    id: str
     quote_ref: str
     status: QuoteStatus
     rejection_note: Optional[str] = None
@@ -182,7 +182,7 @@ class QuoteHeaderRead(BaseModel):
 class QuoteDetailRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    id: str
     quote_ref: str
     status: QuoteStatus
     rejection_note: Optional[str] = None
@@ -215,14 +215,14 @@ class QuoteChargeSubmitItem(BaseModel):
 class QuoteSubmitPayload(BaseModel):
     """Request body for POST /quotes (mapping pipeline)."""
 
-    buyer_id: int
-    origin_airport_id: int
-    destination_airport_id: int
+    buyer_id: str
+    origin_airport_id: str
+    destination_airport_id: str
     tracking_number: str
     gross_weight: float
     volumetric_weight: float
     chargeable_weight: float
-    currency_id: int
+    currency_id: str
     etd: Optional[date] = None
     eta: Optional[date] = None
     goods_description: Optional[str] = None
@@ -246,7 +246,7 @@ class QuoteClientStatusUpdate(BaseModel):
 class MappingCorrectionRequest(BaseModel):
     """PATCH .../charges/{id}/mapping"""
 
-    mapped_charge_id: int
+    mapped_charge_id: str
 
 
 # --- Invoice (InvoiceDetailRead referenced in backend_integration.md §3) ---
@@ -255,14 +255,14 @@ class MappingCorrectionRequest(BaseModel):
 class InvoiceChargeLineRead(ChargeLineRead):
     """Invoice charge line includes invoice_id (frontend InvoiceChargeLine)."""
 
-    invoice_id: int
+    invoice_id: str
 
 
 class InvoiceHeaderRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
-    quote_id: int
+    id: str
+    quote_id: str
     invoice_number: str
     invoice_date: date
     file_path: str
@@ -273,8 +273,8 @@ class InvoiceHeaderRead(BaseModel):
 class InvoiceDetailRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
-    quote_id: int
+    id: str
+    quote_id: str
     invoice_number: str
     invoice_date: date
     file_path: str
@@ -289,9 +289,9 @@ class InvoiceDetailRead(BaseModel):
 class AnomalyRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
-    invoice_id: int
-    invoice_charge_id: Optional[int] = None
+    id: str
+    invoice_id: str
+    invoice_charge_id: Optional[str] = None
     flag_type: AnomalyFlagType
     description: str
     variance: Optional[float] = None
@@ -303,8 +303,8 @@ class AnomalyRead(BaseModel):
 class TrackingEventRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
-    quote_id: int
+    id: str
+    quote_id: str
     event_time: datetime
     location: str
     status: str
@@ -312,7 +312,7 @@ class TrackingEventRead(BaseModel):
 
 
 class TrackingShipmentRead(BaseModel):
-    quote_id: int
+    quote_id: str
     quote_ref: str
     tracking_number: str
     origin: str
@@ -340,16 +340,16 @@ class CopilotQueryResponse(BaseModel):
 class ChargeAliasRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
-    charge_id: int
+    id: str
+    charge_id: str
     alias: str
 
 
 class ChargeRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
-    company_id: int
+    id: str
+    company_id: str
     name: str
     short_name: str
     is_active: bool
@@ -374,7 +374,7 @@ class ChargeAliasCreate(BaseModel):
 class CountryRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    id: str
     name: str
     short_name: str
     is_active: bool
@@ -383,7 +383,7 @@ class CountryRead(BaseModel):
 class CurrencyRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    id: str
     name: str
     short_name: str
     is_active: bool
@@ -392,10 +392,10 @@ class CurrencyRead(BaseModel):
 class AirportRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    id: str
     name: str
     iata_code: str
-    country_id: Optional[int] = None
+    country_id: Optional[str] = None
     is_active: bool
 
 
@@ -424,13 +424,13 @@ class CurrencyPatch(BaseModel):
 class AirportCreate(BaseModel):
     name: str
     iata_code: str
-    country_id: Optional[int] = None
+    country_id: Optional[str] = None
 
 
 class AirportPatch(BaseModel):
     name: Optional[str] = None
     iata_code: Optional[str] = None
-    country_id: Optional[int] = None
+    country_id: Optional[str] = None
     is_active: Optional[bool] = None
 
 
@@ -441,7 +441,7 @@ class ProfileRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    company_id: Optional[int] = None
+    company_id: Optional[str] = None
     name: str
     role: UserRole
     is_admin: bool

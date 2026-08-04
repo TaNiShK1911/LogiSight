@@ -129,14 +129,14 @@ export function QuoteForm() {
     e.preventDefault();
     if (!validate()) return;
     const payload: QuoteSubmitPayload = {
-      buyer_id: Number(header.buyer_id),
-      origin_airport_id: Number(header.origin_airport_id),
-      destination_airport_id: Number(header.destination_airport_id),
+      buyer_id: header.buyer_id,
+      origin_airport_id: header.origin_airport_id,
+      destination_airport_id: header.destination_airport_id,
       tracking_number: header.tracking_number,
       gross_weight: Number(header.gross_weight),
       volumetric_weight: Number(header.volumetric_weight) || 0,
       chargeable_weight: Number(header.chargeable_weight) || 0,
-      currency_id: Number(header.currency_id),
+      currency_id: header.currency_id,
       etd: header.etd || null,
       eta: header.eta || null,
       goods_description: header.goods_description || null,
