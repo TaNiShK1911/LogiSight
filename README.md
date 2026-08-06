@@ -33,7 +33,9 @@ LogiSight is built on a purely agentic architecture powered by **CockroachDB** (
 - **Agentic Memory:** Persistent Copilot session histories, memory events, and system states stored natively in CockroachDB.
 - **Serverless Ingestion:** Automated invoice extraction running on AWS Lambda.
 - **Vector-based Mapping:** Automated charge mapping using CockroachDB distributed vector matching.
-- **Natural Language Copilot:** An AI assistant that answers queries regarding quotes, invoices, and anomalies using live SQL execution via MCP.
+- **Natural Language Copilot:** An AI assistant that answers queries regarding quotes, invoices, and anomalies using live SQL execution via MCP. It features:
+  - **Same-Session Memory:** Remembers the context of previous questions in the same conversation to smoothly handle follow-up references.
+  - **Cross-Session Semantic Recall:** Uses CockroachDB vector indexing on past interactions to automatically pull relevant insights from entirely different sessions for the same tenant.
 - **Multi-tenant Architecture:** Role-based access control built from the ground up.
 
 ## Setup & Local Development

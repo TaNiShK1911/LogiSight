@@ -110,6 +110,84 @@ def get_table_info_cached(db):
     return _table_info_cache
 
 
+async def _get_recent_session_history(session_id: str | None, tenant_id: int, limit: int = 6) -> list[dict]:
+    """Fetch recent message history for the current session."""
+    if not session_id:
+        return []
+    try:
+        from app.database import async_session_factory
+        from app.models.copilot_memory import CopilotMemoryEvent
+        from sqlalchemy import select, desc
+        
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(CopilotMemoryEvent)
+                .where(
+                    CopilotMemoryEvent.session_id == uuid.UUID(session_id),
+                    CopilotMemoryEvent.tenant_id == tenant_id,
+                    CopilotMemoryEvent.event_type.in_(["user_message", "agent_message"])
+                )
+                .order_by(desc(CopilotMemoryEvent.created_at))
+                .limit(limit)
+            )
+            events = result.scalars().all()
+            
+            history = []
+            for event in reversed(events):
+                if event.event_type == "user_message":
+                    history.append({"role": "user", "content": event.content.get("question", "")})
+                elif event.event_type == "agent_message":
+                    history.append({"role": "assistant", "content": event.content.get("answer", "")})
+            return history
+    except Exception as e:
+        logger.warning(f"Failed to fetch recent session history: {e}")
+        return []
+
+
+async def _get_relevant_past_interactions(question: str, tenant_id: int, exclude_session_id: str | None, limit: int = 3) -> list[str]:
+    """Fetch relevant past memory summaries across different sessions."""
+    try:
+        from app.database import async_session_factory
+        from sqlalchemy import text
+        import asyncio
+        from app.services.bedrock_client import generate_embedding
+        
+        query_embedding = await asyncio.to_thread(generate_embedding, question)
+        vec_literal = "[" + ",".join(str(f) for f in query_embedding) + "]"
+        
+        async with async_session_factory() as session:
+            sql = """
+                SELECT summary_text,
+                       1.0 - (embedding_v <=> CAST(:query_vec AS VECTOR)) AS similarity
+                FROM copilot_memory_embeddings
+                WHERE tenant_id = :tenant_id
+                  AND embedding_v IS NOT NULL
+            """
+            params = {"tenant_id": tenant_id, "query_vec": vec_literal}
+            
+            if exclude_session_id:
+                sql += " AND session_id != CAST(:exclude_session_id AS UUID)"
+                params["exclude_session_id"] = exclude_session_id
+                
+            sql += """
+                ORDER BY embedding_v <=> CAST(:query_vec AS VECTOR)
+                LIMIT :limit
+            """
+            params["limit"] = limit
+            
+            result = await session.execute(text(sql), params)
+            summaries = []
+            for row in result.fetchall():
+                summary = row[0]
+                similarity = float(row[1])
+                if similarity >= 0.85:
+                    summaries.append(summary)
+            return summaries
+    except Exception as e:
+        logger.warning(f"Failed to fetch relevant past interactions: {e}")
+        return []
+
+
 async def _record_memory_event(
     session_id: str | None,
     tenant_id: int,
@@ -146,6 +224,31 @@ async def _record_memory_event(
                 content=content,
             )
             session.add(event)
+            
+            # --- Layer 2: Embed and store agent answers for cross-session recall ---
+            if event_type == "agent_message" and "answer" in content:
+                try:
+                    summary_text = f"Question: {content.get('question', '')} / Answer: {content['answer'][:300]}"
+                    from app.services.bedrock_client import generate_embedding
+                    import asyncio
+                    from sqlalchemy import text
+                    
+                    embedding_vec = await asyncio.to_thread(generate_embedding, summary_text)
+                    vec_literal = "[" + ",".join(str(f) for f in embedding_vec) + "]"
+                    
+                    await session.execute(text("""
+                        INSERT INTO copilot_memory_embeddings (id, tenant_id, session_id, memory_event_id, summary_text, embedding_v)
+                        VALUES (gen_random_uuid(), :tenant_id, :session_id, :memory_event_id, :summary_text, CAST(:vec_literal AS VECTOR))
+                    """), {
+                        "tenant_id": tenant_id,
+                        "session_id": actual_session_id,
+                        "memory_event_id": event.id,
+                        "summary_text": summary_text,
+                        "vec_literal": vec_literal
+                    })
+                except Exception as e_embed:
+                    logger.warning(f"Failed to generate/store memory embedding: {e_embed}")
+            
             await session.commit()
     except Exception as e:
         logger.warning(f"Failed to record copilot memory event: {e}")
@@ -157,6 +260,8 @@ async def _generate_sql(
     question: str,
     company_id: int,
     error_context: str = "",
+    history: list[dict] | None = None,
+    past_interactions: list[str] | None = None,
 ) -> str:
     """
     Generate a single PostgreSQL/CockroachDB-compatible SQL query for the
@@ -166,6 +271,21 @@ async def _generate_sql(
     CockroachDB Cloud Managed MCP Server's execute_query tool — an English
     question is not valid SQL) and the direct-SQL fallback path.
     """
+    history_str = ""
+    if history:
+        history_str = "Recent conversation:\n"
+        for msg in history:
+            role = "User" if msg["role"] == "user" else "Assistant"
+            history_str += f"{role}: {msg['content']}\n"
+        history_str += "\nIf the question refers to something from earlier in the conversation (e.g. 'that company', 'the same period', 'those invoices'), resolve it using the conversation history below.\n\n"
+        
+    past_interactions_str = ""
+    if past_interactions:
+        past_interactions_str = "Relevant past interactions from other sessions:\n"
+        for interaction in past_interactions:
+            past_interactions_str += f"- {interaction}\n"
+        past_interactions_str += "\n"
+
     sql_template = f"""You are a PostgreSQL expert for a freight platform.
 Given an input question, create a syntactically correct PostgreSQL query to run.
 Unless the user specifies a specific number of examples, limit your query to at most 100 results using the LIMIT clause.
@@ -196,7 +316,7 @@ OUTPUT RULE:
 Only use the following tables:
 {{table_info}}
 {{error_context}}
-Question: {{question}}
+{past_interactions_str}{history_str}Question: {{question}}
 SQLQuery:"""
 
     sql_prompt = PromptTemplate.from_template(sql_template)
@@ -214,16 +334,38 @@ SQLQuery:"""
     return sql_query.replace("```sql", "").replace("```", "").strip()
 
 
-async def _generate_answer(llm, question: str, query: str, result: str) -> str:
+async def _generate_answer(
+    llm, 
+    question: str, 
+    query: str, 
+    result: str,
+    history: list[dict] | None = None,
+    past_interactions: list[str] | None = None,
+) -> str:
     """Turn a SQL query + its result into a natural-language answer."""
-    answer_template = """Based on the SQL query result, answer the user's question in a clear, narrative summary.
+    history_str = ""
+    if history:
+        history_str = "Recent conversation:\n"
+        for msg in history:
+            role = "User" if msg["role"] == "user" else "Assistant"
+            history_str += f"{role}: {msg['content']}\n"
+        history_str += "\n"
+            
+    past_interactions_str = ""
+    if past_interactions:
+        past_interactions_str = "Relevant past interactions from other sessions:\n"
+        for interaction in past_interactions:
+            past_interactions_str += f"- {interaction}\n"
+        past_interactions_str += "\n"
+
+    answer_template = f"""Based on the SQL query result, answer the user's question in a clear, narrative summary.
 Avoid using markdown tables. Keep it conversational.
 IMPORTANT: Format any ALL_CAPS database enum values or internal codes (e.g., AMOUNT_MISMATCH, UNMAPPED) into clean, human-readable Title Case (e.g., "Amount Mismatch", "Unmapped"). Never expose raw column names or snake_case constants to the user.
 If no data was found or there was an error, say so clearly.
 
-Question: {question}
-SQL Query: {query}
-SQL Result: {result}
+{past_interactions_str}{history_str}Question: {{question}}
+SQL Query: {{query}}
+SQL Result: {{result}}
 Answer:"""
     answer_prompt = PromptTemplate.from_template(answer_template)
     answer_chain = answer_prompt | llm | StrOutputParser()
@@ -258,6 +400,9 @@ async def run_copilot_query(
         content={"question": question},
     )
 
+    history = await _get_recent_session_history(session_id, company_id)
+    past_interactions = await _get_relevant_past_interactions(question, company_id, session_id)
+
     try:
         # DB + LLM are needed for SQL generation on both the MCP path and
         # the direct-SQL fallback path, so resolve them up front.
@@ -272,14 +417,16 @@ async def run_copilot_query(
             try:
                 mcp_tool = create_mcp_tool()
                 if mcp_tool is not None:
-                    mcp_sql = await _generate_sql(db, llm, question, company_id)
+                    mcp_sql = await _generate_sql(
+                        db, llm, question, company_id, history=history, past_interactions=past_interactions
+                    )
                     logger.info(
                         f"Routing Copilot query through MCP Server. SQL: {mcp_sql}"
                     )
                     mcp_result = await asyncio.to_thread(mcp_tool.run, mcp_sql)
                     if mcp_result and "error" not in mcp_result.lower():
                         answer = await _generate_answer(
-                            llm, question, mcp_sql, mcp_result
+                            llm, question, mcp_sql, mcp_result, history=history, past_interactions=past_interactions
                         )
                         await _record_memory_event(
                             session_id=session_id,
@@ -308,7 +455,7 @@ async def run_copilot_query(
 
         for attempt in range(max_retries):
             sql_query = await _generate_sql(
-                db, llm, question, company_id, error_context
+                db, llm, question, company_id, error_context, history=history, past_interactions=past_interactions
             )
             logger.info(f"Generated SQL (Attempt {attempt + 1}): {sql_query}")
 
@@ -332,7 +479,7 @@ async def run_copilot_query(
                         f"or column names in your new query.\n"
                     )
 
-        answer = await _generate_answer(llm, question, sql_query, sql_result)
+        answer = await _generate_answer(llm, question, sql_query, sql_result, history=history, past_interactions=past_interactions)
 
         # Record the agent response as a memory event
         await _record_memory_event(

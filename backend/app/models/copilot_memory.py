@@ -100,3 +100,29 @@ class ChargeEmbedding(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class CopilotMemoryEmbedding(Base):
+    """Vector memory for semantic cross-session memory recall."""
+
+    __tablename__ = "copilot_memory_embeddings"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    tenant_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, index=True
+    )
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("copilot_sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    memory_event_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("copilot_memory_events.id", ondelete="CASCADE"), nullable=False
+    )
+    summary_text: Mapped[str] = mapped_column(
+        Text, nullable=False
+    )
+    # embedding_v is VECTOR(1536) — handled in migration DDL
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
