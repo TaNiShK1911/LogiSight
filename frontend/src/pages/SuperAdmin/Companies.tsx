@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Building2, Plus, ToggleLeft, ToggleRight, X, AlertCircle } from 'lucide-react';
 import { getCompanies, createCompany, updateCompanyStatus } from '../../api/client';
 import type { Company } from '../../api/types';
 
@@ -30,40 +29,41 @@ function CompanyCard({
   toggling: boolean;
 }) {
   return (
-    <div className="p-5 rounded-xl border border-slate-800 bg-slate-900/40 flex items-start justify-between gap-4">
+    <div className="p-6 rounded-3xl border border-surface-container bg-surface-container-lowest flex items-start justify-between gap-4 transition-all duration-200 hover:shadow-sm">
       <div className="flex items-start gap-4">
-        <div className="w-10 h-10 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center flex-shrink-0">
-          <Building2 className="w-5 h-5 text-slate-400" />
+        <div className="w-12 h-12 rounded-xl bg-surface flex items-center justify-center flex-shrink-0">
+           <span className="material-symbols-outlined text-[24px] text-primary">domain</span>
         </div>
         <div>
-          <div className="flex items-center gap-2 mb-0.5">
-            <h3 className="font-semibold text-slate-100">{company.name}</h3>
-            <span className="px-2 py-0.5 rounded-full text-xs font-mono border border-slate-700 text-slate-500">
+          <div className="flex items-center gap-3 mb-1">
+            <h3 className="font-display-sm text-[18px] font-semibold text-primary">{company.name}</h3>
+            <span className="px-2 py-0.5 rounded text-label-sm font-mono tracking-wider bg-surface-container text-on-surface-variant font-medium">
               {company.short_name}
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mb-1.5">
             <span
-              className={`px-2 py-0.5 rounded-full border text-xs font-medium ${
+              className={`px-3 py-1 rounded-full font-label-sm text-[11px] uppercase tracking-wider font-bold ${
                 company.type === 'client'
-                  ? 'bg-emerald-950/50 text-emerald-400 border-emerald-800'
-                  : 'bg-sky-950/50 text-sky-400 border-sky-800'
+                  ? 'bg-emerald-500/10 text-emerald-600'
+                  : 'bg-primary/10 text-primary'
               }`}
             >
               {company.type === 'client' ? 'Client' : 'Forwarder'}
             </span>
             <span
-              className={`px-2 py-0.5 rounded-full border text-xs font-medium ${
+              className={`px-3 py-1 rounded-full font-label-sm text-[11px] uppercase tracking-wider font-bold ${
                 company.is_active
-                  ? 'bg-emerald-950/40 text-emerald-400 border-emerald-800'
-                  : 'bg-slate-800 text-slate-500 border-slate-700'
+                  ? 'bg-emerald-500/10 text-emerald-600'
+                  : 'bg-surface-container text-outline-variant'
               }`}
             >
               {company.is_active ? 'Active' : 'Inactive'}
             </span>
           </div>
           {(company.city || company.country) && (
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="font-body-sm text-[13px] text-on-surface-variant flex items-center gap-1">
+              <span className="material-symbols-outlined text-[14px]">location_on</span>
               {[company.city, company.country].filter(Boolean).join(', ')}
             </p>
           )}
@@ -72,13 +72,13 @@ function CompanyCard({
       <button
         onClick={() => onToggle(company.id, !company.is_active)}
         disabled={toggling}
-        className="flex-shrink-0 text-slate-400 hover:text-slate-200 transition-colors disabled:opacity-40"
+        className="flex-shrink-0 transition-transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100"
         title={company.is_active ? 'Deactivate' : 'Activate'}
       >
         {company.is_active ? (
-          <ToggleRight className="w-7 h-7 text-emerald-400" />
+          <span className="material-symbols-outlined text-[32px] text-emerald-500 !font-light">toggle_on</span>
         ) : (
-          <ToggleLeft className="w-7 h-7" />
+          <span className="material-symbols-outlined text-[32px] text-outline-variant !font-light">toggle_off</span>
         )}
       </button>
     </div>
@@ -123,109 +123,124 @@ export function Companies() {
   const forwarders = companies.filter((c) => c.type === 'forwarder');
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col w-full px-spacing-margin-desktop py-spacing-margin-desktop relative pb-10">
+      <div className="flex items-end justify-between mb-8 max-w-5xl">
         <div>
-          <h1 className="text-2xl font-bold text-slate-100">Companies</h1>
-          <p className="text-slate-400 mt-1">Manage all platform companies and their admin users</p>
+           <p className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-widest mb-2 flex items-center gap-2">
+             <span className="material-symbols-outlined text-[16px]">admin_panel_settings</span> Platform Administration
+           </p>
+           <h1 className="font-display-lg text-display-lg text-on-surface tracking-tighter leading-none mb-3">Companies</h1>
+           <p className="font-body-md text-body-md text-on-surface-variant max-w-2xl">Manage all platform companies and their admin users.</p>
         </div>
         <button
           onClick={() => setShowForm(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-sky-500 hover:bg-sky-400 text-white text-sm font-semibold transition-colors"
+          className="btn-primary"
         >
-          <Plus className="w-4 h-4" /> Create Company
+          <span className="material-symbols-outlined text-[20px]">add</span> Create Company
         </button>
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
-            <div className="flex items-center justify-between p-6 border-b border-slate-800">
-              <h2 className="text-lg font-semibold text-slate-100">Create Company</h2>
-              <button onClick={() => { setShowForm(false); reset(); setApiError(null); }} className="text-slate-500 hover:text-slate-300">
-                <X className="w-5 h-5" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-surface-container-highest/80 backdrop-blur-md">
+          <div className="w-full max-w-2xl rounded-[32px] border border-surface-container bg-surface-container-lowest shadow-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-8 pb-6 border-b border-surface-container">
+              <div>
+                 <h2 className="font-headline-md text-headline-md text-primary font-semibold mb-1">Create Company</h2>
+                 <p className="font-body-sm text-body-sm text-on-surface-variant">Onboard a new client or forwarder</p>
+              </div>
+              <button onClick={() => { setShowForm(false); reset(); setApiError(null); }} className="w-10 h-10 rounded-full flex items-center justify-center bg-surface hover:bg-surface-container transition-colors text-on-surface-variant">
+                 <span className="material-symbols-outlined text-[24px]">close</span>
               </button>
             </div>
             <form
               onSubmit={handleSubmit((d) => createMutation.mutate(d))}
-              className="p-6 space-y-4 max-h-[75vh] overflow-y-auto"
+              className="p-8 space-y-6 max-h-[75vh] overflow-y-auto"
             >
               {apiError && (
-                <div className="flex items-start gap-2 p-3 rounded-lg bg-red-950/60 border border-red-800">
-                  <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
-                  <p className="text-sm text-red-300">{apiError}</p>
+                <div className="flex items-start gap-3 p-4 rounded-xl bg-error-container text-on-error-container">
+                  <span className="material-symbols-outlined text-[20px] mt-0.5">error</span>
+                  <p className="font-body-md text-body-md">{apiError}</p>
                 </div>
               )}
 
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Company Details</p>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Company Name</label>
-                  <input {...register('name')} className="input-field" placeholder="Acme Imports Ltd" />
-                  {errors.name && <p className="err">{errors.name.message}</p>}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Short Name</label>
-                  <input {...register('short_name')} className="input-field" placeholder="ACME" />
-                  {errors.short_name && <p className="err">{errors.short_name.message}</p>}
-                </div>
-              </div>
-
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">Type</label>
-                <select {...register('type')} className="input-field">
-                  <option value="client">Client (Buyer/Importer)</option>
-                  <option value="forwarder">Forwarder (Carrier)</option>
-                </select>
+                 <p className="font-label-sm text-[12px] font-bold text-primary uppercase tracking-widest mb-4 flex items-center gap-2 border-b border-surface pb-2">
+                    <span className="material-symbols-outlined text-[16px]">business</span> Company Details
+                 </p>
+                 <div className="grid grid-cols-2 gap-5">
+                   <div className="flex flex-col gap-1.5">
+                     <label className="font-label-sm text-label-sm font-semibold text-on-surface">Company Name</label>
+                     <input {...register('name')} className="input-field" placeholder="Acme Imports Ltd" />
+                     {errors.name && <p className="font-label-sm text-[12px] text-error">{errors.name.message}</p>}
+                   </div>
+                   <div className="flex flex-col gap-1.5">
+                     <label className="font-label-sm text-label-sm font-semibold text-on-surface">Short Name</label>
+                     <input {...register('short_name')} className="input-field" placeholder="ACME" />
+                     {errors.short_name && <p className="font-label-sm text-[12px] text-error">{errors.short_name.message}</p>}
+                   </div>
+                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">City</label>
+              <div className="flex flex-col gap-1.5">
+                <label className="font-label-sm text-label-sm font-semibold text-on-surface">Type</label>
+                <div className="relative">
+                   <select {...register('type')} className="input-field appearance-none w-full">
+                     <option value="client">Client (Buyer/Importer)</option>
+                     <option value="forwarder">Forwarder (Carrier)</option>
+                   </select>
+                   <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-outline-variant pointer-events-none">expand_more</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-5">
+                <div className="flex flex-col gap-1.5">
+                  <label className="font-label-sm text-label-sm font-semibold text-on-surface">City</label>
                   <input {...register('city')} className="input-field" placeholder="Singapore" />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Country</label>
+                <div className="flex flex-col gap-1.5">
+                  <label className="font-label-sm text-label-sm font-semibold text-on-surface">Country</label>
                   <input {...register('country')} className="input-field" placeholder="Singapore" />
                 </div>
               </div>
 
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider pt-2">First Admin User</p>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Name</label>
-                  <input {...register('admin_name')} className="input-field" placeholder="Jane Smith" />
-                  {errors.admin_name && <p className="err">{errors.admin_name.message}</p>}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Email</label>
-                  <input {...register('admin_email')} type="email" className="input-field" placeholder="jane@acme.com" />
-                  {errors.admin_email && <p className="err">{errors.admin_email.message}</p>}
-                </div>
+              <div className="pt-2">
+                 <p className="font-label-sm text-[12px] font-bold text-primary uppercase tracking-widest mb-4 flex items-center gap-2 border-b border-surface pb-2">
+                    <span className="material-symbols-outlined text-[16px]">person_add</span> First Admin User
+                 </p>
+                 <div className="grid grid-cols-2 gap-5">
+                   <div className="flex flex-col gap-1.5">
+                     <label className="font-label-sm text-label-sm font-semibold text-on-surface">Name</label>
+                     <input {...register('admin_name')} className="input-field" placeholder="Jane Smith" />
+                     {errors.admin_name && <p className="font-label-sm text-[12px] text-error">{errors.admin_name.message}</p>}
+                   </div>
+                   <div className="flex flex-col gap-1.5">
+                     <label className="font-label-sm text-label-sm font-semibold text-on-surface">Email</label>
+                     <input {...register('admin_email')} type="email" className="input-field" placeholder="jane@acme.com" />
+                     {errors.admin_email && <p className="font-label-sm text-[12px] text-error">{errors.admin_email.message}</p>}
+                   </div>
+                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">Temporary Password</label>
+              <div className="flex flex-col gap-1.5">
+                <label className="font-label-sm text-label-sm font-semibold text-on-surface">Temporary Password</label>
                 <input {...register('admin_password')} type="password" className="input-field" placeholder="Min. 8 characters" />
-                {errors.admin_password && <p className="err">{errors.admin_password.message}</p>}
+                {errors.admin_password && <p className="font-label-sm text-[12px] text-error">{errors.admin_password.message}</p>}
               </div>
 
-              <div className="flex gap-3 pt-2">
+              <div className="flex gap-4 pt-4 border-t border-surface-container">
                 <button
                   type="button"
                   onClick={() => { setShowForm(false); reset(); setApiError(null); }}
-                  className="flex-1 py-2.5 rounded-lg border border-slate-700 text-slate-300 hover:text-slate-100 text-sm font-medium transition-colors"
+                  className="flex-1 btn-secondary"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={createMutation.isPending}
-                  className="flex-1 py-2.5 rounded-lg bg-sky-500 hover:bg-sky-400 disabled:opacity-60 text-white text-sm font-semibold transition-colors"
+                  className="flex-1 btn-primary"
                 >
-                  {createMutation.isPending ? 'Creating…' : 'Create Company'}
+                  {createMutation.isPending ? 'Creating...' : 'Create Company'}
                 </button>
               </div>
             </form>
@@ -234,19 +249,19 @@ export function Companies() {
       )}
 
       {isLoading ? (
-        <div className="space-y-3">
+        <div className="space-y-4 max-w-5xl">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-20 rounded-xl border border-slate-800 bg-slate-900/40 animate-pulse" />
+            <div key={i} className="h-28 rounded-3xl bg-surface-container-lowest border border-surface-container animate-pulse shadow-sm" />
           ))}
         </div>
       ) : (
-        <div className="space-y-8">
+        <div className="space-y-10 max-w-5xl">
           {clients.length > 0 && (
             <div>
-              <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">
+              <h2 className="font-label-sm text-[12px] font-bold text-outline-variant uppercase tracking-widest mb-4 ml-2">
                 Clients ({clients.length})
               </h2>
-              <div className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {clients.map((c) => (
                   <CompanyCard
                     key={c.id}
@@ -258,12 +273,13 @@ export function Companies() {
               </div>
             </div>
           )}
+          
           {forwarders.length > 0 && (
             <div>
-              <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">
+              <h2 className="font-label-sm text-[12px] font-bold text-outline-variant uppercase tracking-widest mb-4 ml-2">
                 Forwarders ({forwarders.length})
               </h2>
-              <div className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {forwarders.map((c) => (
                   <CompanyCard
                     key={c.id}
@@ -275,9 +291,16 @@ export function Companies() {
               </div>
             </div>
           )}
+          
           {companies.length === 0 && (
-            <div className="py-16 text-center text-slate-600">
-              No companies yet. Create the first one above.
+            <div className="py-24 flex flex-col items-center justify-center bg-surface-container-lowest rounded-3xl border border-surface-container border-dashed">
+               <div className="w-20 h-20 bg-surface rounded-full flex items-center justify-center mb-6">
+                  <span className="material-symbols-outlined text-[40px] text-outline-variant">domain_disabled</span>
+               </div>
+               <h2 className="font-headline-md-mobile text-[24px] font-semibold text-on-surface mb-2">No companies found</h2>
+               <p className="font-body-md text-body-md text-on-surface-variant max-w-md text-center">
+                  Get started by creating your first client or forwarder company on the platform.
+               </p>
             </div>
           )}
         </div>

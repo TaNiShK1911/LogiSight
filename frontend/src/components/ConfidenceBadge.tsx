@@ -20,9 +20,9 @@ const CONFIG: Record<MappingTier, { label: string; dot: string; bg: string; text
   },
   LLM: {
     label: 'AI Resolved',
-    dot: 'bg-sky-500',
-    bg: 'bg-sky-950 border-sky-800',
-    text: 'text-sky-400',
+    dot: 'bg-apple-blue',
+    bg: 'bg-sky-950 border-apple-blue/30',
+    text: 'text-apple-blue',
   },
   HUMAN: {
     label: 'Human Verified',
@@ -71,7 +71,7 @@ function resolveConfig(tier: MappingTier, score?: number | null) {
 export function ConfidenceBadge({ tier, score }: Props) {
   const c = resolveConfig(tier, score);
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded border text-xs font-medium ${c.bg} ${c.text}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded border text-label-sm font-medium ${c.bg} ${c.text}`}>
       <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${c.dot}`} />
       {c.label}
       {tier === 'VECTOR' && score !== null && score !== undefined && (

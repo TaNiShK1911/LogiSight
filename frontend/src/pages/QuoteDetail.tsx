@@ -1,22 +1,21 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, CheckCircle, XCircle, X, AlertCircle } from 'lucide-react';
 import { getQuote, updateQuoteStatus, correctQuoteChargeMapping, getCharges } from '../api/client';
 import { ChargeLineTable } from '../components/ChargeLineTable';
 import { useAuth } from '../hooks/useAuth';
 
 const STATUS_CONFIG = {
-  SUBMITTED: { label: 'Pending Review', cls: 'bg-sky-900/60 text-sky-300 border-sky-800' },
-  ACCEPTED: { label: 'Accepted', cls: 'bg-emerald-900/60 text-emerald-300 border-emerald-800' },
-  REJECTED: { label: 'Rejected', cls: 'bg-red-900/60 text-red-300 border-red-800' },
+  SUBMITTED: { label: 'Pending Review', cls: 'bg-surface-container-high text-on-surface' },
+  ACCEPTED: { label: 'Accepted', cls: 'bg-surface-container text-on-surface-variant' },
+  REJECTED: { label: 'Rejected', cls: 'bg-error-container text-on-error-container' },
 };
 
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex items-start justify-between py-2.5 border-b border-slate-800/60 last:border-0">
-      <span className="text-sm text-slate-500">{label}</span>
-      <span className="text-sm text-slate-200 font-medium text-right">{value}</span>
+    <div className="flex items-start justify-between py-4 border-b border-surface-container last:border-0">
+      <span className="font-label-sm text-label-sm text-on-surface-variant">{label}</span>
+      <span className="font-body-md text-body-md text-on-surface font-medium text-right">{value}</span>
     </div>
   );
 }
@@ -65,153 +64,214 @@ export function QuoteDetail() {
 
   if (isLoading) {
     return (
-      <div className="space-y-4">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="h-24 rounded-xl border border-slate-800 bg-slate-900/40 animate-pulse" />
-        ))}
+      <div className="flex flex-col w-full px-spacing-margin-desktop py-spacing-margin-desktop space-y-4">
+        <div className="h-10 w-32 rounded-xl bg-surface-container-highest/50 animate-pulse mb-8" />
+        <div className="h-32 w-full rounded-3xl bg-surface-container-lowest border border-surface-container shadow-sm animate-pulse" />
+        <div className="grid md:grid-cols-2 gap-6">
+           <div className="h-64 w-full rounded-3xl bg-surface-container-lowest border border-surface-container shadow-sm animate-pulse" />
+           <div className="h-64 w-full rounded-3xl bg-surface-container-lowest border border-surface-container shadow-sm animate-pulse" />
+        </div>
       </div>
     );
   }
 
   if (!quote) {
-    return <div className="text-slate-400 py-12 text-center">Quote not found.</div>;
+    return (
+      <div className="flex flex-col items-center justify-center h-full min-h-[60vh]">
+        <span className="material-symbols-outlined text-[64px] text-outline-variant mb-6">description</span>
+        <h2 className="font-display-lg-mobile text-display-lg-mobile text-on-surface mb-2">Quote Not Found</h2>
+        <p className="font-body-md text-body-md text-on-surface-variant mb-8">The quote you're looking for doesn't exist or you don't have access.</p>
+        <button
+          onClick={() => navigate('/app/quotes')}
+          className="flex items-center gap-2 px-6 py-3 rounded-full bg-primary text-on-primary font-label-sm text-label-sm transition-colors hover:bg-on-surface"
+        >
+          <span className="material-symbols-outlined text-[18px]">arrow_back</span> Back to Quotes
+        </button>
+      </div>
+    );
   }
 
   const sc = STATUS_CONFIG[quote.status];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
+    <div className="flex flex-col w-full relative pb-10">
+      <div className="px-spacing-margin-desktop py-spacing-margin-desktop mb-4">
         <button
           onClick={() => navigate('/app/quotes')}
-          className="text-slate-500 hover:text-slate-300 transition-colors"
+          className="flex items-center gap-2 text-on-surface-variant hover:text-primary transition-colors font-label-sm text-label-sm mb-6 w-fit"
         >
-          <ArrowLeft className="w-5 h-5" />
+          <span className="material-symbols-outlined text-[18px]">arrow_back</span> Back to Quotes
         </button>
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-slate-100 font-mono">{quote.quote_ref}</h1>
-            <span className={`px-2.5 py-1 rounded-full border text-xs font-semibold ${sc.cls}`}>
-              {sc.label}
-            </span>
-          </div>
-          <p className="text-sm text-slate-400 mt-0.5">
-            {isClient ? quote.forwarder?.name : quote.buyer?.name}
-          </p>
-        </div>
-      </div>
-
-      {actionError && (
-        <div className="flex items-start gap-2.5 p-3 rounded-lg bg-red-950/60 border border-red-800">
-          <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-red-300">{actionError}</p>
-        </div>
-      )}
-
-      {quote.status === 'REJECTED' && quote.rejection_note && (
-        <div className="p-4 rounded-lg border border-red-800 bg-red-950/20">
-          <p className="text-xs font-semibold text-red-400 mb-1">REJECTION NOTE</p>
-          <p className="text-sm text-red-200">{quote.rejection_note}</p>
-        </div>
-      )}
-
-      <div className="grid md:grid-cols-2 gap-5">
-        <div className="p-5 rounded-xl border border-slate-800 bg-slate-900/40">
-          <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Shipment</h2>
-          <InfoRow label="Origin" value={`${quote.origin_airport?.iata_code} — ${quote.origin_airport?.name}`} />
-          <InfoRow label="Destination" value={`${quote.destination_airport?.iata_code} — ${quote.destination_airport?.name}`} />
-          <InfoRow label="AWB / Tracking" value={<span className="font-mono">{quote.tracking_number}</span>} />
-          <InfoRow label="Currency" value={quote.currency?.short_name} />
-        </div>
-        <div className="p-5 rounded-xl border border-slate-800 bg-slate-900/40">
-          <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Weights</h2>
-          <InfoRow label="Gross Weight" value={`${quote.gross_weight} kg`} />
-          <InfoRow label="Volumetric Weight" value={`${quote.volumetric_weight} kg`} />
-          <InfoRow label="Chargeable Weight" value={`${quote.chargeable_weight} kg`} />
-          <InfoRow label="Submitted" value={new Date(quote.created_at).toLocaleDateString()} />
-        </div>
-      </div>
-
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-slate-200">
-            Charge Lines
-            {isClient && (
-              <span className="ml-2 text-xs font-normal text-slate-500">
-                — showing your Charge Master nomenclature
+        
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-8">
+          <div>
+            <p className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-widest mb-2 flex items-center gap-2">
+              <span className="material-symbols-outlined text-[16px]">request_quote</span> Quote Detail
+            </p>
+            <div className="flex items-center gap-4">
+              <h1 className="font-display-lg text-display-lg text-on-surface tracking-tighter leading-none font-mono">{quote.quote_ref}</h1>
+              <span className={`px-4 py-1.5 rounded-full font-label-sm text-label-sm tracking-wide ${sc.cls}`}>
+                {sc.label}
               </span>
-            )}
-          </h2>
-        </div>
-        <ChargeLineTable
-          charges={quote.charges ?? []}
-          isClient={isClient}
-          showConfidence={isClient}
-          chargeMaster={chargeMaster}
-          onCorrectMapping={
-            isClient
-              ? (chargeId, mappedChargeId) =>
-                  correctMutation.mutate({ chargeId, mappedChargeId })
-              : undefined
-          }
-        />
-      </div>
-
-      {isClient && quote.status === 'SUBMITTED' && (
-        <div className="flex items-center justify-end gap-4 pt-2">
-          <button
-            onClick={() => setShowRejectModal(true)}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-red-800 text-red-400 hover:bg-red-950/30 text-sm font-semibold transition-colors"
-          >
-            <XCircle className="w-4 h-4" /> Reject Quote
-          </button>
-          <button
-            onClick={() => statusMutation.mutate({ status: 'ACCEPTED' })}
-            disabled={statusMutation.isPending}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white text-sm font-semibold transition-colors"
-          >
-            <CheckCircle className="w-4 h-4" />
-            {statusMutation.isPending ? 'Accepting…' : 'Accept Quote'}
-          </button>
-        </div>
-      )}
-
-      {showRejectModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
-            <div className="flex items-center justify-between p-5 border-b border-slate-800">
-              <h2 className="text-base font-semibold text-slate-100">Reject Quote</h2>
+            </div>
+            <p className="text-body-md text-on-surface-variant mt-4 font-medium flex items-center gap-2">
+              <span className="material-symbols-outlined text-[18px]">business</span>
+              {isClient ? quote.forwarder?.name : quote.buyer?.name}
+            </p>
+          </div>
+          
+          {isClient && quote.status === 'SUBMITTED' && (
+            <div className="flex items-center gap-3">
               <button
-                onClick={() => { setShowRejectModal(false); setRejectNote(''); }}
-                className="text-slate-500 hover:text-slate-300"
+                onClick={() => setShowRejectModal(true)}
+                className="flex items-center gap-2 px-6 py-3 rounded-full border border-error text-error hover:bg-error-container hover:text-on-error-container font-label-sm text-label-sm transition-all transform active:scale-95"
               >
-                <X className="w-5 h-5" />
+                <span className="material-symbols-outlined text-[18px]">close</span> Reject
+              </button>
+              <button
+                onClick={() => statusMutation.mutate({ status: 'ACCEPTED' })}
+                disabled={statusMutation.isPending}
+                className="flex items-center gap-2 px-6 py-3 rounded-full bg-primary hover:bg-on-surface disabled:opacity-60 text-on-primary font-label-sm text-label-sm shadow-sm transition-all transform active:scale-95"
+              >
+                <span className="material-symbols-outlined text-[18px]">check</span>
+                {statusMutation.isPending ? 'Accepting...' : 'Accept Quote'}
               </button>
             </div>
-            <div className="p-5 space-y-4">
-              <p className="text-sm text-slate-400">
-                Optionally provide a reason. The forwarder will see this note.
+          )}
+        </div>
+      </div>
+
+      <div className="px-spacing-margin-desktop space-y-6">
+        {actionError && (
+          <div className="flex items-center gap-3 p-4 rounded-xl bg-error-container text-on-error-container border border-error/20">
+            <span className="material-symbols-outlined text-[20px] text-error">error</span>
+            <p className="font-body-md text-body-md">{actionError}</p>
+          </div>
+        )}
+
+        {quote.status === 'REJECTED' && quote.rejection_note && (
+          <div className="bg-error-container/20 p-6 rounded-3xl border border-error/20 flex gap-4 items-start">
+            <div className="w-10 h-10 rounded-full bg-error/10 flex items-center justify-center flex-shrink-0">
+              <span className="material-symbols-outlined text-error text-[20px]">block</span>
+            </div>
+            <div>
+              <p className="font-label-sm text-label-sm font-semibold text-error uppercase tracking-wider mb-1">Rejection Note</p>
+              <p className="font-body-md text-body-md text-on-surface">{quote.rejection_note}</p>
+            </div>
+          </div>
+        )}
+
+        <div className="grid md:grid-cols-2 gap-6">
+          <div className="bg-surface-container-lowest rounded-3xl p-8 shadow-sm border border-surface-container">
+            <div className="flex items-center gap-2 mb-6">
+              <span className="material-symbols-outlined text-[20px] text-primary">local_shipping</span>
+              <h2 className="font-label-sm text-label-sm font-semibold text-on-surface uppercase tracking-wider">Shipment Details</h2>
+            </div>
+            <InfoRow label="Origin" value={`${quote.origin_airport?.iata_code} — ${quote.origin_airport?.name}`} />
+            <InfoRow label="Destination" value={`${quote.destination_airport?.iata_code} — ${quote.destination_airport?.name}`} />
+            <InfoRow label="AWB / Tracking" value={<span className="font-mono bg-surface-container px-2 py-0.5 rounded text-sm">{quote.tracking_number}</span>} />
+            <InfoRow label="Currency" value={<span className="font-mono bg-surface-container px-2 py-0.5 rounded text-sm">{quote.currency?.short_name}</span>} />
+          </div>
+          <div className="bg-surface-container-lowest rounded-3xl p-8 shadow-sm border border-surface-container">
+            <div className="flex items-center gap-2 mb-6">
+              <span className="material-symbols-outlined text-[20px] text-primary">scale</span>
+              <h2 className="font-label-sm text-label-sm font-semibold text-on-surface uppercase tracking-wider">Weights & Dates</h2>
+            </div>
+            <InfoRow label="Gross Weight" value={`${quote.gross_weight} kg`} />
+            <InfoRow label="Volumetric Weight" value={`${quote.volumetric_weight} kg`} />
+            <InfoRow label="Chargeable Weight" value={`${quote.chargeable_weight} kg`} />
+            <InfoRow label="Submitted" value={new Date(quote.created_at).toLocaleDateString()} />
+          </div>
+        </div>
+
+        <div className="bg-surface-container-lowest rounded-3xl p-8 shadow-sm border border-surface-container">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+            <div className="flex items-center gap-3">
+              <span className="material-symbols-outlined text-[24px] text-primary">request_quote</span>
+              <h2 className="font-headline-md-mobile text-headline-md-mobile text-on-surface tracking-tight">
+                Charge Lines
+              </h2>
+            </div>
+            {isClient && (
+              <p className="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-2 bg-surface px-4 py-2 rounded-full border border-surface-container">
+                <span className="material-symbols-outlined text-[16px]">info</span>
+                Showing your Charge Master nomenclature
               </p>
-              <textarea
-                value={rejectNote}
-                onChange={(e) => setRejectNote(e.target.value)}
-                rows={4}
-                className="w-full px-3 py-2.5 rounded-lg border border-slate-700 bg-slate-800 text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent resize-none"
-                placeholder="e.g. BAF rate exceeds agreed ceiling…"
-              />
-              <div className="flex gap-3">
+            )}
+          </div>
+          
+          <div className="w-full overflow-x-auto">
+            <ChargeLineTable
+              charges={quote.charges ?? []}
+              isClient={isClient}
+              showConfidence={isClient}
+              chargeMaster={chargeMaster}
+              onCorrectMapping={
+                isClient
+                  ? (chargeId, mappedChargeId) =>
+                      correctMutation.mutate({ chargeId, mappedChargeId })
+                  : undefined
+              }
+            />
+          </div>
+        </div>
+      </div>
+
+      {showRejectModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-scrim/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md rounded-3xl border border-surface-container bg-surface-container-lowest shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-6 border-b border-surface-container">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-error-container text-on-error-container flex items-center justify-center">
+                  <span className="material-symbols-outlined text-[20px]">block</span>
+                </div>
+                <h2 className="font-headline-md-mobile text-[20px] text-on-surface tracking-tight">Reject Quote</h2>
+              </div>
+              <button
+                onClick={() => { setShowRejectModal(false); setRejectNote(''); }}
+                className="w-10 h-10 rounded-full bg-surface-container hover:bg-surface-container-high text-on-surface-variant flex items-center justify-center transition-colors"
+              >
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+            <div className="p-6 space-y-6">
+              <div>
+                <label className="block font-label-sm text-label-sm text-on-surface-variant mb-2 ml-1">Rejection Reason (Optional)</label>
+                <div className="relative">
+                  <span className="material-symbols-outlined absolute left-4 top-4 text-on-surface-variant text-[20px]">edit_note</span>
+                  <textarea
+                    value={rejectNote}
+                    onChange={(e) => setRejectNote(e.target.value)}
+                    rows={4}
+                    className="w-full pl-11 pr-4 py-3 rounded-2xl border border-surface-container bg-surface text-on-surface placeholder:text-on-surface-variant/70 font-body-md focus:outline-none focus:border-error focus:ring-1 focus:ring-error transition-all resize-none"
+                    placeholder="e.g. BAF rate exceeds agreed ceiling..."
+                  />
+                </div>
+                <p className="font-label-sm text-[12px] text-on-surface-variant mt-2 ml-1">
+                  The forwarder will be able to see this note.
+                </p>
+              </div>
+              
+              <div className="flex gap-3 pt-2">
                 <button
                   onClick={() => { setShowRejectModal(false); setRejectNote(''); }}
-                  className="flex-1 py-2.5 rounded-lg border border-slate-700 text-slate-300 hover:text-slate-100 text-sm font-medium transition-colors"
+                  className="flex-1 py-3 rounded-full border border-surface-container hover:bg-surface-container text-on-surface font-label-sm text-label-sm transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={() => statusMutation.mutate({ status: 'REJECTED', note: rejectNote || undefined })}
                   disabled={statusMutation.isPending}
-                  className="flex-1 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 disabled:opacity-60 text-white text-sm font-semibold transition-colors"
+                  className="flex-1 py-3 rounded-full bg-error hover:bg-on-error-container disabled:opacity-60 text-on-error font-label-sm text-label-sm shadow-sm transition-colors flex items-center justify-center gap-2"
                 >
-                  {statusMutation.isPending ? 'Rejecting…' : 'Confirm Rejection'}
+                  {statusMutation.isPending ? (
+                    <>
+                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Rejecting...
+                    </>
+                  ) : (
+                    'Confirm Rejection'
+                  )}
                 </button>
               </div>
             </div>

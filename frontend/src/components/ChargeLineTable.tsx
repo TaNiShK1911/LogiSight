@@ -33,12 +33,12 @@ function MappingDropdown({
     <div className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded border border-slate-600 bg-slate-800 text-slate-300 hover:border-slate-500 transition-colors"
+        className="inline-flex items-center gap-1 px-2 py-1 text-label-sm rounded border border-outline-variant bg-surface-container-high text-on-surface hover:border-slate-500 transition-colors"
       >
         Correct <ChevronDown className="w-3 h-3" />
       </button>
       {open && (
-        <div className="absolute z-50 left-0 top-full mt-1 w-56 rounded-lg border border-slate-700 bg-slate-900 shadow-xl overflow-hidden">
+        <div className="absolute z-50 left-0 top-full mt-1 w-56 rounded-lg border border-outline-variant bg-surface-container shadow-xl overflow-hidden">
           <div className="max-h-52 overflow-y-auto">
             {chargeMaster.map((c) => (
               <button
@@ -47,9 +47,9 @@ function MappingDropdown({
                   onSelect(chargeId, c.id);
                   setOpen(false);
                 }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-slate-300 hover:bg-slate-800 transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-2 text-left text-body-md text-on-surface hover:bg-surface-container-high transition-colors"
               >
-                <span className="text-xs text-slate-500 font-mono w-10 flex-shrink-0">{c.short_name}</span>
+                <span className="text-label-sm text-outline font-mono w-10 flex-shrink-0">{c.short_name}</span>
                 {c.name}
               </button>
             ))}
@@ -94,33 +94,33 @@ export function ChargeLineTable({
   };
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-slate-800">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto rounded-lg border border-surface-variant">
+      <table className="w-full text-body-md">
         <thead>
-          <tr className="border-b border-slate-800 bg-slate-900/60">
+          <tr className="border-b border-surface-variant bg-surface-container-low">
             {isClient && !hideMapping ? (
               <>
-                <th className="px-4 py-3 text-left font-semibold text-slate-300">Charge</th>
-                <th className="px-4 py-3 text-left font-semibold text-slate-400 text-xs">Forwarder Term</th>
+                <th className="px-4 py-3 text-left font-semibold text-on-surface">Charge</th>
+                <th className="px-4 py-3 text-left font-semibold text-on-surface-variant text-label-sm">Forwarder Term</th>
               </>
             ) : (
-              <th className="px-4 py-3 text-left font-semibold text-slate-300">Charge Name</th>
+              <th className="px-4 py-3 text-left font-semibold text-on-surface">Charge Name</th>
             )}
-            <th className="px-4 py-3 text-right font-semibold text-slate-300">Rate</th>
-            <th className="px-4 py-3 text-center font-semibold text-slate-300">Basis</th>
-            <th className="px-4 py-3 text-right font-semibold text-slate-300">Qty</th>
-            <th className="px-4 py-3 text-right font-semibold text-slate-300">Amount</th>
+            <th className="px-4 py-3 text-right font-semibold text-on-surface">Rate</th>
+            <th className="px-4 py-3 text-center font-semibold text-on-surface">Basis</th>
+            <th className="px-4 py-3 text-right font-semibold text-on-surface">Qty</th>
+            <th className="px-4 py-3 text-right font-semibold text-on-surface">Amount</th>
             {quoteCharges.length > 0 && (
-              <th className="px-4 py-3 text-right font-semibold text-slate-300">Quoted</th>
+              <th className="px-4 py-3 text-right font-semibold text-on-surface">Quoted</th>
             )}
             {showConfidence && isClient && !hideMapping && (
-              <th className="px-4 py-3 text-center font-semibold text-slate-300">Confidence</th>
+              <th className="px-4 py-3 text-center font-semibold text-on-surface">Confidence</th>
             )}
             {quoteCharges.length > 0 && (
-              <th className="px-4 py-3 text-center font-semibold text-slate-300">Flag</th>
+              <th className="px-4 py-3 text-center font-semibold text-on-surface">Flag</th>
             )}
             {onCorrectMapping && isClient && !hideMapping && (
-              <th className="px-4 py-3 text-center font-semibold text-slate-300">Action</th>
+              <th className="px-4 py-3 text-center font-semibold text-on-surface">Action</th>
             )}
           </tr>
         </thead>
@@ -136,29 +136,29 @@ export function ChargeLineTable({
                 ? 'bg-amber-950/10 border-l-2 border-l-amber-700'
                 : idx % 2 === 0
                 ? 'bg-transparent'
-                : 'bg-slate-900/30';
+                : 'bg-surface-container-lowest';
 
             return (
-              <tr key={charge.id} className={`border-b border-slate-800/60 transition-colors ${rowClass}`}>
+              <tr key={charge.id} className={`border-b border-surface-variant transition-colors ${rowClass}`}>
                 {isClient && !hideMapping ? (
                   <>
                     <td className="px-4 py-3">
-                      <span className="font-medium text-slate-100">
+                      <span className="font-medium text-primary">
                         {charge.mapped_charge_name ?? (
-                          <span className="italic text-slate-500">Unmapped</span>
+                          <span className="italic text-outline">Unmapped</span>
                         )}
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="text-xs text-slate-500">{charge.raw_charge_name}</span>
+                      <span className="text-label-sm text-outline">{charge.raw_charge_name}</span>
                     </td>
                   </>
                 ) : (
                   <td className="px-4 py-3">
-                    <span className="font-medium text-slate-100">{charge.raw_charge_name}</span>
+                    <span className="font-medium text-primary">{charge.raw_charge_name}</span>
                   </td>
                 )}
-                <td className="px-4 py-3 text-right font-mono text-slate-300">
+                <td className="px-4 py-3 text-right font-mono text-on-surface">
                   {(() => {
                     // Show quote rate if available, otherwise show invoice rate
                     if (quoteCharge && quoteCharge.rate !== null && quoteCharge.rate !== undefined) {
@@ -167,19 +167,19 @@ export function ChargeLineTable({
                     if (charge.rate !== null && charge.rate !== undefined) {
                       return fmt(charge.rate);
                     }
-                    return <span className="text-slate-600">—</span>;
+                    return <span className="text-outline-variant">—</span>;
                   })()}
                 </td>
                 <td className="px-4 py-3 text-center">
-                  <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-400 text-xs">{charge.basis || '—'}</span>
+                  <span className="px-2 py-0.5 rounded bg-surface-container-high text-on-surface-variant text-label-sm">{charge.basis || '—'}</span>
                 </td>
-                <td className="px-4 py-3 text-right font-mono text-slate-300">
-                  {charge.qty !== null && charge.qty !== undefined ? charge.qty : <span className="text-slate-600">—</span>}
+                <td className="px-4 py-3 text-right font-mono text-on-surface">
+                  {charge.qty !== null && charge.qty !== undefined ? charge.qty : <span className="text-outline-variant">—</span>}
                 </td>
-                <td className="px-4 py-3 text-right font-mono font-semibold text-slate-100">{fmt(charge.amount)}</td>
+                <td className="px-4 py-3 text-right font-mono font-semibold text-primary">{fmt(charge.amount)}</td>
                 {quoteCharges.length > 0 && (
-                  <td className="px-4 py-3 text-right font-mono text-slate-400">
-                    {quoteCharge ? fmt(quoteCharge.amount) : <span className="text-slate-600">—</span>}
+                  <td className="px-4 py-3 text-right font-mono text-on-surface-variant">
+                    {quoteCharge ? fmt(quoteCharge.amount) : <span className="text-outline-variant">—</span>}
                   </td>
                 )}
                 {showConfidence && isClient && !hideMapping && (
@@ -192,7 +192,7 @@ export function ChargeLineTable({
                     {anomaly ? (
                       <AnomalyFlag flagType={anomaly.flag_type} compact />
                     ) : (
-                      <span className="inline-flex items-center gap-1 text-xs text-emerald-500">
+                      <span className="inline-flex items-center gap-1 text-label-sm text-emerald-500">
                         <Check className="w-3 h-3" /> OK
                       </span>
                     )}
@@ -207,7 +207,7 @@ export function ChargeLineTable({
                         onSelect={onCorrectMapping}
                       />
                     ) : charge.mapping_tier === 'HUMAN' ? (
-                      <span className="text-xs text-emerald-500 flex items-center gap-1 justify-center">
+                      <span className="text-label-sm text-emerald-500 flex items-center gap-1 justify-center">
                         <Check className="w-3 h-3" /> Verified
                       </span>
                     ) : null}
@@ -218,16 +218,16 @@ export function ChargeLineTable({
           })}
         </tbody>
         <tfoot>
-          <tr className="border-t border-slate-700 bg-slate-900/60">
-            <td colSpan={isClient && !hideMapping ? 4 : 3} className="px-4 py-3 text-sm font-semibold text-slate-400">
+          <tr className="border-t border-outline-variant bg-surface-container-low">
+            <td colSpan={isClient && !hideMapping ? 4 : 3} className="px-4 py-3 text-body-md font-semibold text-on-surface-variant">
               Total
             </td>
             <td className="px-4 py-3" />
-            <td className="px-4 py-3 text-right font-mono font-bold text-slate-100">
+            <td className="px-4 py-3 text-right font-mono font-bold text-primary">
               {fmt(charges.reduce((s, c) => s + c.amount, 0))}
             </td>
             {quoteCharges.length > 0 && (
-              <td className="px-4 py-3 text-right font-mono font-bold text-slate-400">
+              <td className="px-4 py-3 text-right font-mono font-bold text-on-surface-variant">
                 {fmt(quoteCharges.reduce((s, c) => s + c.amount, 0))}
               </td>
             )}

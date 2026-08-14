@@ -143,32 +143,32 @@ export function VarianceComparison({
   return (
     <div className="space-y-6">
       {/* AWB Number Header */}
-      <div className="flex items-center justify-between p-4 rounded-xl border border-slate-700 bg-slate-900/60">
+      <div className="flex items-center justify-between p-4 rounded-xl border border-outline-variant bg-surface-container-low">
         <div>
-          <p className="text-xs text-slate-500 mb-1">Air Waybill Number</p>
-          <p className="text-xl font-bold font-mono text-sky-400">{awbNumber || 'N/A'}</p>
+          <p className="text-label-sm text-outline mb-1">Air Waybill Number</p>
+          <p className="text-xl font-bold font-mono text-apple-blue">{awbNumber || 'N/A'}</p>
         </div>
         <div className="text-right">
-          <p className="text-xs text-slate-500 mb-1">Total Variance</p>
+          <p className="text-label-sm text-outline mb-1">Total Variance</p>
           <p className={`text-2xl font-bold font-mono ${getVarianceColor(totalVariancePct, 5)}`}>
             {totalVariance >= 0 ? '+' : ''}{currencySymbol}{fmt(totalVariance)}
-            <span className="text-sm ml-2">({totalVariancePct >= 0 ? '+' : ''}{totalVariancePct.toFixed(1)}%)</span>
+            <span className="text-body-md ml-2">({totalVariancePct >= 0 ? '+' : ''}{totalVariancePct.toFixed(1)}%)</span>
           </p>
         </div>
       </div>
 
       {/* Variance Summary Cards */}
       <div className="grid md:grid-cols-3 gap-4">
-        <div className="p-4 rounded-xl border border-slate-800 bg-slate-900/40">
-          <p className="text-xs text-slate-500 mb-1">Quote Total</p>
-          <p className="text-2xl font-bold font-mono text-slate-100">{currencySymbol}{fmt(quoteTotal)}</p>
+        <div className="p-4 rounded-xl border border-surface-variant bg-surface-container/40">
+          <p className="text-label-sm text-outline mb-1">Quote Total</p>
+          <p className="text-2xl font-bold font-mono text-primary">{currencySymbol}{fmt(quoteTotal)}</p>
         </div>
-        <div className="p-4 rounded-xl border border-slate-800 bg-slate-900/40">
-          <p className="text-xs text-slate-500 mb-1">Invoice Total</p>
-          <p className="text-2xl font-bold font-mono text-slate-100">{currencySymbol}{fmt(invoiceTotal)}</p>
+        <div className="p-4 rounded-xl border border-surface-variant bg-surface-container/40">
+          <p className="text-label-sm text-outline mb-1">Invoice Total</p>
+          <p className="text-2xl font-bold font-mono text-primary">{currencySymbol}{fmt(invoiceTotal)}</p>
         </div>
         <div className={`p-4 rounded-xl border ${getVarianceBg(totalVariancePct, 5)}`}>
-          <p className="text-xs text-slate-500 mb-1">Variance</p>
+          <p className="text-label-sm text-outline mb-1">Variance</p>
           <p className={`text-2xl font-bold font-mono ${getVarianceColor(totalVariancePct, 5)}`}>
             {totalVariance >= 0 ? '+' : ''}{currencySymbol}{fmt(totalVariance)}
           </p>
@@ -176,17 +176,17 @@ export function VarianceComparison({
       </div>
 
       {/* Charge-by-Charge Comparison Table */}
-      <div className="rounded-xl border border-slate-800 overflow-hidden">
+      <div className="rounded-xl border border-surface-variant overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-body-md">
             <thead>
-              <tr className="border-b border-slate-800 bg-slate-900/60">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400">Charge Name</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-400">Quote Amount</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-400">Invoice Amount</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-400">Variance</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-400">Variance %</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-slate-400">Status</th>
+              <tr className="border-b border-surface-variant bg-surface-container-low">
+                <th className="px-4 py-3 text-left text-label-sm font-semibold text-on-surface-variant">Charge Name</th>
+                <th className="px-4 py-3 text-right text-label-sm font-semibold text-on-surface-variant">Quote Amount</th>
+                <th className="px-4 py-3 text-right text-label-sm font-semibold text-on-surface-variant">Invoice Amount</th>
+                <th className="px-4 py-3 text-right text-label-sm font-semibold text-on-surface-variant">Variance</th>
+                <th className="px-4 py-3 text-right text-label-sm font-semibold text-on-surface-variant">Variance %</th>
+                <th className="px-4 py-3 text-center text-label-sm font-semibold text-on-surface-variant">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -201,18 +201,18 @@ export function VarianceComparison({
                 return (
                   <tr
                     key={`${row.chargeName}-${idx}`}
-                    className={`border-b border-slate-800/60 ${hasIssue ? 'bg-red-950/10' : ''}`}
+                    className={`border-b border-surface-variant ${hasIssue ? 'bg-red-950/10' : ''}`}
                   >
-                    <td className="px-4 py-3 font-medium text-slate-200">
+                    <td className="px-4 py-3 font-medium text-primary">
                       {row.chargeName}
                       {row.anomaly && (
-                        <div className="text-xs text-slate-500 mt-1">{row.anomaly.description}</div>
+                        <div className="text-label-sm text-outline mt-1">{row.anomaly.description}</div>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-slate-300">
+                    <td className="px-4 py-3 text-right font-mono text-on-surface">
                       {row.quoteCharge ? `${currencySymbol}${fmt(quoteAmount)}` : '—'}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-slate-300">
+                    <td className="px-4 py-3 text-right font-mono text-on-surface">
                       {row.invoiceCharge ? `${currencySymbol}${fmt(invoiceAmount)}` : '—'}
                     </td>
                     <td className={`px-4 py-3 text-right font-mono font-semibold ${getVarianceColor(variancePct, 5)}`}>
@@ -223,11 +223,11 @@ export function VarianceComparison({
                     </td>
                     <td className="px-4 py-3 text-center">
                       {Math.abs(variancePct) > 5 ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-red-950/40 text-red-400 border border-red-800">
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-label-sm font-medium bg-red-950/40 text-red-400 border border-red-800">
                           <AlertTriangle className="w-3 h-3" /> Variance
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-emerald-950/40 text-emerald-400 border border-emerald-800">
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-label-sm font-medium bg-emerald-950/40 text-emerald-400 border border-emerald-800">
                           <CheckCircle2 className="w-3 h-3" /> OK
                         </span>
                       )}

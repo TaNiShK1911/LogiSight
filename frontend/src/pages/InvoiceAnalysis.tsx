@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Zap, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { getInvoice, analyzeInvoice, getAnomalies, getCharges, correctInvoiceChargeMapping, getQuote } from '../api/client';
 import { ChargeLineTable } from '../components/ChargeLineTable';
 import { AnomalyFlag } from '../components/AnomalyFlag';
@@ -58,99 +57,132 @@ export function InvoiceAnalysis() {
 
   if (invLoading) {
     return (
-      <div className="space-y-4">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="h-24 rounded-xl border border-slate-800 bg-slate-900/40 animate-pulse" />
-        ))}
+      <div className="flex flex-col w-full px-spacing-margin-desktop py-spacing-margin-desktop space-y-4">
+        <div className="h-10 w-32 rounded-xl bg-surface-container-highest/50 animate-pulse mb-8" />
+        <div className="h-32 w-full rounded-3xl bg-surface-container-lowest border border-surface-container shadow-sm animate-pulse" />
+        <div className="h-64 w-full rounded-3xl bg-surface-container-lowest border border-surface-container shadow-sm animate-pulse" />
       </div>
     );
   }
 
   if (!invoice) {
-    return <div className="text-slate-400 py-12 text-center">Invoice not found.</div>;
+    return (
+      <div className="flex flex-col items-center justify-center h-full min-h-[60vh]">
+        <span className="material-symbols-outlined text-[64px] text-outline-variant mb-6">receipt_long</span>
+        <h2 className="font-display-lg-mobile text-display-lg-mobile text-on-surface mb-2">Invoice Not Found</h2>
+        <p className="font-body-md text-body-md text-on-surface-variant mb-8">The invoice you're looking for doesn't exist or you don't have access.</p>
+        <button
+          onClick={() => navigate('/app/invoices')}
+          className="flex items-center gap-2 px-6 py-3 rounded-full bg-primary text-on-primary font-label-sm text-label-sm transition-colors hover:bg-on-surface"
+        >
+          <span className="material-symbols-outlined text-[18px]">arrow_back</span> Back to Invoices
+        </button>
+      </div>
+    );
   }
 
   const awbNumber = invoice.quote?.tracking_number || '';
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
+    <div className="flex flex-col w-full relative pb-10">
+      <div className="px-spacing-margin-desktop py-spacing-margin-desktop mb-4">
         <button
           onClick={() => navigate('/app/invoices')}
-          className="text-slate-500 hover:text-slate-300 transition-colors"
+          className="flex items-center gap-2 text-on-surface-variant hover:text-primary transition-colors font-label-sm text-label-sm mb-6 w-fit"
         >
-          <ArrowLeft className="w-5 h-5" />
+          <span className="material-symbols-outlined text-[18px]">arrow_back</span> Back to Invoices
         </button>
-        <div className="flex-1">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-slate-100 font-mono">{invoice.invoice_number}</h1>
-              <p className="text-sm text-slate-400 mt-0.5">
-                Quote: <span className="font-mono">{invoice.quote?.quote_ref}</span>
-                {' · '}{invoice.invoice_date}
-              </p>
+        
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-8">
+          <div>
+            <p className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-widest mb-2 flex items-center gap-2">
+              <span className="material-symbols-outlined text-[16px]">receipt</span> Invoice
+            </p>
+            <h1 className="font-display-lg text-display-lg text-on-surface tracking-tighter leading-none font-mono">{invoice.invoice_number}</h1>
+            <div className="flex flex-wrap items-center gap-2 mt-3 font-body-md text-body-md text-on-surface-variant">
+              <span>Quote: <span className="font-mono text-on-surface">{invoice.quote?.quote_ref}</span></span>
+              <span className="text-outline-variant">•</span>
+              <span>{invoice.invoice_date}</span>
             </div>
-            {isClient && (
-              <button
-                onClick={() => analyseMutation.mutate()}
-                disabled={analyseMutation.isPending}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-sky-500 hover:bg-sky-400 disabled:opacity-60 text-white text-sm font-semibold transition-colors shadow-lg shadow-sky-500/20"
-              >
-                <Zap className={`w-4 h-4 ${analyseMutation.isPending ? 'animate-pulse' : ''}`} />
-                {analyseMutation.isPending ? 'Analysing…' : 'Analyse Invoice'}
-              </button>
-            )}
           </div>
+          {isClient && (
+            <button
+              onClick={() => analyseMutation.mutate()}
+              disabled={analyseMutation.isPending || analysed}
+              className={`flex items-center gap-2 px-6 py-3 rounded-full font-label-sm text-label-sm transition-all shadow-sm transform active:scale-95 ${
+                analysed 
+                  ? 'bg-surface-container text-on-surface-variant cursor-default' 
+                  : 'bg-primary text-on-primary hover:shadow-md'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[18px]">
+                {analysed ? 'check_circle' : (analyseMutation.isPending ? 'hourglass_top' : 'magic_button')}
+              </span>
+              {analysed ? 'Analysis Complete' : (analyseMutation.isPending ? 'Analysing...' : 'Analyse Invoice')}
+            </button>
+          )}
         </div>
       </div>
 
-      {analysed && isClient && quoteDetail && (
-        <VarianceComparison
-          awbNumber={awbNumber}
-          quoteCharges={quoteDetail.charges as any ?? []}
-          invoiceCharges={invoice.charges as any ?? []}
-          anomalies={anomalies as any}
-          currencySymbol="$"
-        />
-      )}
-
-      {analysed && anomalies.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-400" />
-            <h2 className="text-sm font-semibold text-slate-200">
-              {anomalies.length} Anomal{anomalies.length === 1 ? 'y' : 'ies'} Detected
-            </h2>
-          </div>
-          <div className="grid md:grid-cols-2 gap-3">
-            {anomalies.map((a) => (
-              <AnomalyFlag key={a.id} flagType={a.flag_type} description={a.description} />
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="space-y-3">
-        <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
-          Invoice Charges ({invoice.charges?.length ?? 0})
-        </h2>
-        {invoice.charges && invoice.charges.length > 0 ? (
-          <ChargeLineTable
-            charges={invoice.charges as ChargeLineRow[]}
-            isClient={isClient}
-            showConfidence={false}
-            chargeMaster={chargeMaster}
-            anomalies={analysed ? anomalies : []}
-            quoteCharges={analysed && quoteDetail ? (quoteDetail.charges as ChargeLineRow[]) : []}
-            hideMapping={true}
-          />
-        ) : (
-          <div className="p-8 text-center text-slate-500 border border-slate-800 rounded-lg bg-slate-900/40">
-            No charges extracted from this invoice.
+      <div className="px-spacing-margin-desktop space-y-6">
+        {analysed && isClient && quoteDetail && (
+          <div className="bg-surface-container-lowest rounded-3xl p-6 shadow-sm border border-surface-container">
+            <VarianceComparison
+              awbNumber={awbNumber}
+              quoteCharges={quoteDetail.charges as any ?? []}
+              invoiceCharges={invoice.charges as any ?? []}
+              anomalies={anomalies as any}
+              currencySymbol="$"
+            />
           </div>
         )}
-      </div>
 
+        {analysed && anomalies.length > 0 && (
+          <div className="bg-error-container/20 rounded-3xl p-6 border border-error/20">
+            <div className="flex items-center gap-3 mb-4">
+              <span className="material-symbols-outlined text-[24px] text-error">warning</span>
+              <h2 className="font-headline-md-mobile text-headline-md-mobile text-on-surface tracking-tight">
+                {anomalies.length} Anomal{anomalies.length === 1 ? 'y' : 'ies'} Detected
+              </h2>
+            </div>
+            <div className="grid md:grid-cols-2 gap-4">
+              {anomalies.map((a) => (
+                <AnomalyFlag key={a.id} flagType={a.flag_type} description={a.description} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="bg-surface-container-lowest rounded-3xl p-6 shadow-sm border border-surface-container">
+          <div className="flex items-center gap-3 mb-6">
+            <span className="material-symbols-outlined text-[24px] text-primary">list_alt</span>
+            <h2 className="font-headline-md-mobile text-headline-md-mobile text-on-surface tracking-tight">
+              Invoice Charges ({invoice.charges?.length ?? 0})
+            </h2>
+          </div>
+          
+          {invoice.charges && invoice.charges.length > 0 ? (
+            <div className="w-full overflow-x-auto">
+              <ChargeLineTable
+                charges={invoice.charges as ChargeLineRow[]}
+                isClient={isClient}
+                showConfidence={false}
+                chargeMaster={chargeMaster}
+                anomalies={analysed ? anomalies : []}
+                quoteCharges={analysed && quoteDetail ? (quoteDetail.charges as ChargeLineRow[]) : []}
+                hideMapping={true}
+              />
+            </div>
+          ) : (
+            <div className="py-16 text-center rounded-2xl bg-surface/50 border border-surface-container border-dashed">
+              <span className="material-symbols-outlined text-[40px] text-outline-variant mb-4">description</span>
+              <p className="font-body-md text-body-md text-on-surface-variant max-w-md mx-auto">
+                No charges extracted from this invoice yet. {isClient && !analysed ? "Run analysis to extract data." : ""}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

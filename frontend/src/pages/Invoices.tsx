@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Upload, ArrowRight, FileText, AlertCircle, X } from 'lucide-react';
 import { getInvoices, getQuotes, uploadInvoice } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 
@@ -52,159 +51,185 @@ export function Invoices() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-100">Invoices</h1>
-          <p className="text-slate-400 mt-1 text-sm">
-            {isClient ? 'Review and analyse uploaded freight invoices' : 'Upload invoice PDFs against accepted quotes'}
-          </p>
-        </div>
-        {isForwarder && (
-          <button
-            onClick={() => setShowUpload(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-sky-500 hover:bg-sky-400 text-white text-sm font-semibold transition-colors"
-          >
-            <Upload className="w-4 h-4" /> Upload Invoice
-          </button>
-        )}
-      </div>
-
-      {showUpload && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
-            <div className="flex items-center justify-between p-5 border-b border-slate-800">
-              <h2 className="text-base font-semibold text-slate-100">Upload Invoice</h2>
-              <button
-                onClick={() => { setShowUpload(false); setSelectedFile(null); setSelectedQuoteId(''); setUploadError(null); }}
-                className="text-slate-500 hover:text-slate-300"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-5 space-y-4">
-              {uploadError && (
-                <div className="flex items-start gap-2 p-3 rounded-lg bg-red-950/60 border border-red-800">
-                  <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
-                  <p className="text-sm text-red-300">{uploadError}</p>
-                </div>
-              )}
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1.5">Accepted Quote</label>
-                <select
-                  value={selectedQuoteId}
-                  onChange={(e) => setSelectedQuoteId(e.target.value)}
-                  className="input-field"
-                >
-                  <option value="">Select an accepted quote…</option>
-                  {acceptedQuotes.map((q) => (
-                    <option key={q.id} value={q.id}>
-                      {q.quote_ref} — AWB {q.tracking_number}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1.5">Invoice PDF</label>
-                <div
-                  onClick={() => fileRef.current?.click()}
-                  className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
-                    selectedFile
-                      ? 'border-sky-700 bg-sky-950/20'
-                      : 'border-slate-700 hover:border-slate-600'
-                  }`}
-                >
-                  <input
-                    ref={fileRef}
-                    type="file"
-                    accept=".pdf"
-                    className="hidden"
-                    onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
-                  />
-                  <Upload className={`w-8 h-8 mx-auto mb-2 ${selectedFile ? 'text-sky-400' : 'text-slate-600'}`} />
-                  {selectedFile ? (
-                    <p className="text-sm text-sky-300 font-medium">{selectedFile.name}</p>
-                  ) : (
-                    <>
-                      <p className="text-sm text-slate-400">Click to select PDF</p>
-                      <p className="text-xs text-slate-600 mt-1">Supports digital and scanned PDFs</p>
-                    </>
-                  )}
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => { setShowUpload(false); setSelectedFile(null); setSelectedQuoteId(''); setUploadError(null); }}
-                  className="flex-1 py-2.5 rounded-lg border border-slate-700 text-slate-300 text-sm font-medium transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleUpload}
-                  disabled={uploadMutation.isPending}
-                  className="flex-1 py-2.5 rounded-lg bg-sky-500 hover:bg-sky-400 disabled:opacity-60 text-white text-sm font-semibold transition-colors"
-                >
-                  {uploadMutation.isPending ? 'Uploading…' : 'Upload & Extract'}
-                </button>
-              </div>
-            </div>
+    <div className="flex flex-col w-full relative">
+      <div className="px-spacing-margin-desktop py-spacing-margin-desktop mb-spacing-section-gap-sm">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-10">
+          <div>
+            <p className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-widest mb-2">Documents</p>
+            <h1 className="font-display-lg text-display-lg text-on-surface tracking-tighter leading-none">Invoices</h1>
+            <p className="text-on-surface-variant mt-2 text-body-md max-w-xl">
+              {isClient ? 'Review and analyse uploaded freight invoices.' : 'Upload invoice PDFs against accepted quotes.'}
+            </p>
           </div>
-        </div>
-      )}
-
-      {isLoading ? (
-        <div className="space-y-2">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-16 rounded-lg border border-slate-800 bg-slate-900/40 animate-pulse" />
-          ))}
-        </div>
-      ) : invoices.length === 0 ? (
-        <div className="py-24 text-center">
-          <FileText className="w-12 h-12 text-slate-700 mx-auto mb-4" />
-          <p className="text-slate-400 font-medium">No invoices yet</p>
           {isForwarder && (
             <button
               onClick={() => setShowUpload(true)}
-              className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-sky-500 hover:bg-sky-400 text-white text-sm font-semibold transition-colors"
+              className="flex items-center gap-2 bg-primary text-on-primary px-6 py-3 rounded-full font-label-sm text-label-sm transition-all shadow-sm hover:shadow-md transform active:scale-95"
             >
-              <Upload className="w-4 h-4" /> Upload first invoice
+              <span className="material-symbols-outlined text-[18px]">upload</span> Upload Invoice
             </button>
           )}
         </div>
-      ) : (
-        <div className="rounded-xl border border-slate-800 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-800 bg-slate-900/60">
-                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">Invoice #</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">Quote Ref</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">Invoice Date</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">Uploaded</th>
-                <th className="px-5 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {invoices.map((inv) => (
-                <tr
-                  key={inv.id}
-                  className="border-b border-slate-800/60 hover:bg-slate-800/30 cursor-pointer transition-colors"
-                  onClick={() => navigate(`/app/invoices/${inv.id}`)}
+
+        {showUpload && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-surface-container-highest/60 backdrop-blur-sm">
+            <div className="w-full max-w-md rounded-3xl border border-outline-variant bg-surface-container-lowest shadow-[0_20px_60px_-15px_rgba(0,0,0,0.1)] overflow-hidden">
+              <div className="flex items-center justify-between p-6 border-b border-surface-container">
+                <h2 className="font-headline-md-mobile text-headline-md-mobile text-on-surface text-[24px]">Upload Invoice</h2>
+                <button
+                  onClick={() => { setShowUpload(false); setSelectedFile(null); setSelectedQuoteId(''); setUploadError(null); }}
+                  className="text-on-surface-variant hover:text-primary transition-colors"
                 >
-                  <td className="px-5 py-3.5 font-mono text-sky-400 font-medium">{inv.invoice_number}</td>
-                  <td className="px-5 py-3.5 font-mono text-slate-400 text-xs">{inv.quote?.quote_ref ?? '—'}</td>
-                  <td className="px-5 py-3.5 text-slate-400 text-xs">{inv.invoice_date}</td>
-                  <td className="px-5 py-3.5 text-slate-500 text-xs">
-                    {new Date(inv.uploaded_at).toLocaleDateString()}
-                  </td>
-                  <td className="px-5 py-3.5 text-right">
-                    <ArrowRight className="w-4 h-4 text-slate-600 inline" />
-                  </td>
-                </tr>
+                  <span className="material-symbols-outlined text-[24px]">close</span>
+                </button>
+              </div>
+              <div className="p-6 space-y-6">
+                {uploadError && (
+                  <div className="flex items-start gap-2 p-4 rounded-xl bg-error-container text-on-error-container border border-error/20">
+                    <span className="material-symbols-outlined text-[20px] text-error flex-shrink-0">error</span>
+                    <p className="text-body-md text-error">{uploadError}</p>
+                  </div>
+                )}
+                <div>
+                  <label className="block text-body-md font-medium text-on-surface mb-2">Accepted Quote</label>
+                  <div className="relative">
+                    <select
+                      value={selectedQuoteId}
+                      onChange={(e) => setSelectedQuoteId(e.target.value)}
+                      className="w-full appearance-none bg-surface border border-outline-variant rounded-xl px-4 py-3 text-body-md text-on-surface focus:outline-none focus:border-primary transition-colors"
+                    >
+                      <option value="">Select an accepted quote…</option>
+                      {acceptedQuotes.map((q) => (
+                        <option key={q.id} value={q.id}>
+                          {q.quote_ref} — AWB {q.tracking_number}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-on-surface-variant">expand_more</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-body-md font-medium text-on-surface mb-2">Invoice PDF</label>
+                  <div
+                    onClick={() => fileRef.current?.click()}
+                    className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-colors ${
+                      selectedFile
+                        ? 'border-apple-blue bg-apple-blue/5'
+                        : 'border-outline-variant hover:border-outline hover:bg-surface-container-low'
+                    }`}
+                  >
+                    <input
+                      ref={fileRef}
+                      type="file"
+                      accept=".pdf"
+                      className="hidden"
+                      onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+                    />
+                    <span className={`material-symbols-outlined text-[32px] mx-auto mb-3 ${selectedFile ? 'text-apple-blue' : 'text-on-surface-variant'}`}>
+                      {selectedFile ? 'task' : 'upload_file'}
+                    </span>
+                    {selectedFile ? (
+                      <p className="text-body-md text-apple-blue font-medium">{selectedFile.name}</p>
+                    ) : (
+                      <>
+                        <p className="text-body-md text-on-surface">Click to select PDF</p>
+                        <p className="text-label-sm text-on-surface-variant mt-1">Supports digital and scanned PDFs</p>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-4 pt-2">
+                  <button
+                    onClick={() => { setShowUpload(false); setSelectedFile(null); setSelectedQuoteId(''); setUploadError(null); }}
+                    className="flex-1 py-3 rounded-full border border-outline-variant text-on-surface font-label-sm text-label-sm hover:bg-surface-container transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleUpload}
+                    disabled={uploadMutation.isPending}
+                    className="flex-1 py-3 rounded-full bg-apple-blue hover:bg-[#005bb5] disabled:opacity-60 text-white font-label-sm text-label-sm shadow-sm transition-colors flex items-center justify-center gap-2"
+                  >
+                    {uploadMutation.isPending ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        Uploading…
+                      </>
+                    ) : (
+                      'Upload & Extract'
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="bg-surface-container-lowest rounded-3xl p-8 shadow-sm">
+          <div className="flex justify-between items-center mb-8">
+            <div>
+              <h3 className="font-headline-md-mobile text-headline-md-mobile text-on-surface tracking-tight">Invoice Documents</h3>
+              <p className="font-body-md text-body-md text-on-surface-variant mt-1">All processed invoices and extraction results.</p>
+            </div>
+          </div>
+          
+          {isLoading ? (
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-16 rounded-xl border border-surface-container-highest bg-surface-container-highest/40 animate-pulse" />
               ))}
-            </tbody>
-          </table>
+            </div>
+          ) : invoices.length === 0 ? (
+            <div className="py-24 text-center">
+              <span className="material-symbols-outlined text-[48px] text-outline-variant mx-auto mb-4">description</span>
+              <p className="text-on-surface-variant font-body-md mb-6">No invoices yet</p>
+              {isForwarder && (
+                <button
+                  onClick={() => setShowUpload(true)}
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-apple-blue hover:bg-[#005bb5] text-white font-label-sm text-label-sm shadow-sm transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[18px]">upload</span> Upload first invoice
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="w-full overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-surface-container-highest">
+                    <th className="py-4 px-4 font-label-sm text-label-sm text-on-surface-variant font-medium uppercase tracking-wider">Invoice #</th>
+                    <th className="py-4 px-4 font-label-sm text-label-sm text-on-surface-variant font-medium uppercase tracking-wider">Quote Ref</th>
+                    <th className="py-4 px-4 font-label-sm text-label-sm text-on-surface-variant font-medium uppercase tracking-wider">Invoice Date</th>
+                    <th className="py-4 px-4 font-label-sm text-label-sm text-on-surface-variant font-medium uppercase tracking-wider">Uploaded</th>
+                    <th className="py-4 px-4"></th>
+                  </tr>
+                </thead>
+                <tbody className="font-body-md text-body-md">
+                  {invoices.map((inv) => (
+                    <tr
+                      key={inv.id}
+                      className="border-b border-surface-container hover:bg-surface-container/30 transition-colors group cursor-pointer"
+                      onClick={() => navigate(`/app/invoices/${inv.id}`)}
+                    >
+                      <td className="py-4 px-4 font-mono text-apple-blue font-medium text-sm">{inv.invoice_number}</td>
+                      <td className="py-4 px-4 font-mono text-on-surface-variant text-label-sm">{inv.quote?.quote_ref ?? '—'}</td>
+                      <td className="py-4 px-4 text-on-surface-variant text-sm">{inv.invoice_date}</td>
+                      <td className="py-4 px-4 text-outline-variant text-sm">
+                        {new Date(inv.uploaded_at).toLocaleDateString()}
+                      </td>
+                      <td className="py-4 px-4 text-right">
+                        <button className="text-on-surface-variant hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+                          <span className="material-symbols-outlined text-[20px]">arrow_forward</span>
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
